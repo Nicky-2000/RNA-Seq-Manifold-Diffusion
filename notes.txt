@@ -1,4 +1,4 @@
-Apis For the project. 
+General Apis For the project. 
 
 
 Data Loaders: 
@@ -13,7 +13,6 @@ Manifold learning thing
 Diffusion model. 
 - I guess we would like one diffusion model that we can just initialize with a different "noise function" 
 - Everything else should be the same except they have different noising functions
-
 
 
 Metrics: 
