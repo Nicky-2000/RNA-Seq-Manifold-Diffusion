@@ -1,0 +1,25 @@
+Apis For the project. 
+
+
+Data Loaders: 
+- Need something to load in some RNA data. 
+- Need something to make a swiss roll data set. 
+
+
+Manifold learning thing
+- We need to take in a data set. And then we need to output some representation of a manifold. Maybe we just output a "noising function" or something here that can be passed into our diffusion model? 
+- What else could this step be? 
+
+Diffusion model. 
+- I guess we would like one diffusion model that we can just initialize with a different "noise function" 
+- Everything else should be the same except they have different noising functions
+
+
+
+Metrics: 
+- We need to take in two diffusion models and a set of points taht will be our samples (maybe 10 points). 
+- Therefore we will get 2 outputs (one per model) per data point in the set of points
+- Then we need to compare the 2 sets of output points (maybe against our learned manifold?)
+- Maybe in terms of something else? Quality? 
+- then if we want to test sample efficiency of the mainfold learned diffusion. Maybe we only train the mainifold diffusion model with 50% of the data as the other one. 
+- What else could we do here? 
