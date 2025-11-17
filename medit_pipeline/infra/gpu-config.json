@@ -1,0 +1,22 @@
+
+{
+  "project_id": "medit-478122",
+  "number_of_instances": 1,
+  "instance_config": {
+    "name": "medit",
+    "zone": [],
+    "machine_type": "g2-standard-8",
+    "gpu_type": "nvidia-l4",
+    "number_of_gpus": 1,
+    "image_project": "deeplearning-platform-release",
+    "image_family": "pytorch-2-7-cu128-ubuntu-2204-nvidia-570",
+    "disk_type": "pd-ssd",
+    "disk_size": 300,
+    "firewall_rules": ["default"],
+    "network_interfaces": { "network": "global/networks/default" },
+    "identity_and_api_access": {
+      "service_account_email": "default",
+      "scopes": "https://www.googleapis.com/auth/cloud-platform"
+    }
+  }
+}

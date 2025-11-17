@@ -1,0 +1,9 @@
+{
+  "typeCheckingMode": "off",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownMemberType": "none",
+  "reportMissingImports": "none",
+  "venvPath": "./venv/bin/activate",
+  "ignore": ["data", "out"]
+}

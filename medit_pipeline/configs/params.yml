@@ -1,0 +1,11 @@
+seed: 7
+hvg_n_top_genes: 2000
+
+spec:
+  n_pcs: 20
+  dcol_max_cells: 3000
+
+qc:
+  min_cells: 500
+  min_genes: 200
+  max_pct_mt: 15

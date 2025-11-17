@@ -1,0 +1,38 @@
+raw_dir: data/raw
+interim_dir: data/interim
+results_dir: out
+
+sources:
+  weinreb2020:
+    url: "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM4185642"
+    note: "Lineage-traced hematopoiesis: clonal barcodes + scRNA-seq."
+
+  waddington_ot:
+    url: "<PUT-WADDINGTON-OT-DATA-URL>"
+    note: "Time-course reprogramming dataset used in Waddington-OT."
+
+  k562_gwps:
+    url: "<PUT-K562-GWPS-DATA-URL>"
+    note: "Optional perturbation benchmark: K562 genome-wide Perturb-seq."
+
+  # Add additional datasets or processed artifacts here as needed, e.g.:
+  # manifold_graphs:
+  #   url: "<OPTIONAL-PRECOMPUTED-GRAPHS-LOCATION>"
+  #   note: "Precomputed kNN graphs / Laplace-Beltrami operators (if used)."
+# Paths are relative to medit_pipeline/ (we live in a subfolder).
+raw_dir: ../data/raw      # raw inputs
+data_dir: ../data         # final preprocessed data (no "interim")
+results_dir: ../out       # plots, logs, metrics, etc.
+
+sources:
+  weinreb2020:
+    url: "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM4185642"
+    note: "Lineage-traced hematopoiesis: clonal barcodes + scRNA-seq."
+
+  waddington_ot:
+    url: "<PUT-WADDINGTON-OT-DATA-URL>"
+    note: "Time-course reprogramming dataset used in Waddington-OT."
+
+  k562_gwps:
+    url: "<PUT-K562-GWPS-DATA-URL>"
+    note: "Optional perturbation benchmark: K562 genome-wide Perturb-seq."
