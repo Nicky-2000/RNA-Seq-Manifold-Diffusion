@@ -91,7 +91,7 @@ PIPELINE ?= qc
 
 vm.run:
 	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
-		cd ~/MEDIT && \
+		cd ~/MEDIT/medit_pipeline && \
 		$(MAKE) $(PIPELINE) PY_CMD=\"$(VM_PY)\" "'
 
 # -------------------------
