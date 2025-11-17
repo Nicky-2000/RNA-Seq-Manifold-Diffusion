@@ -89,21 +89,33 @@ vm.ensure_dirs:
 	  mkdir -p ~/MEDIT/data/raw ~/MEDIT/data/prep ~/MEDIT/out && \
 	  echo \"[ok] ensured local workspace dirs\" "'
 
-# Which pipeline target to run on the VM (reuses this Makefile on the VM)
-PIPELINE ?= all
+# -------------------------
+# Run a target on the VM (reuses this Makefile on the VM)
+#
+# PIPELINE controls which Make target runs on the VM.
+# We default to `qc`, since that's the only real step right now.
+#
+# Examples (from your laptop):
+#   make vm.run                 # runs `make qc` on the VM
+#   make vm.run PIPELINE=qc     # same as above (explicit)
+# -------------------------
+PIPELINE ?= qc
+
 vm.run:
 	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
 		cd ~/MEDIT && \
 		$(MAKE) $(PIPELINE) PY_CMD=\"$(VM_PY)\" "'
 
 # -------------------------
-# LOCAL pipeline (uses LOCAL_PY by default)
-# You can override: `make all PY_CMD="conda run -n venv python"`
+# LOCAL qc command (optional; useful for debugging)
+#
+# PY_CMD is the Python runner used *locally*.
+# By default it is just `python`, but you can override, e.g.:
+#   make qc PY_CMD=\"conda run -n medit python\"
 # -------------------------
 PY_CMD ?= $(LOCAL_PY)
 
-.PHONY: all qc
-all: qc
+.PHONY: qc
 
 # Run QC + preprocessing, writing final prepped data to data/prep
 # (update --adata path if your raw file lives elsewhere)
@@ -112,7 +124,7 @@ qc:
 	  --params configs/params.yml \
 	  --out data/prep \
 	  --adata data/raw/stateFate_inVitro.h5ad
-
+	  
 # -------------------------
 # Data download to GCS from VM
 # -------------------------
