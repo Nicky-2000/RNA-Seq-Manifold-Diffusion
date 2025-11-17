@@ -55,7 +55,7 @@ else
   conda env create -n venv -f "$ENV_FILE"
 fi
 
-# -------- 5) Sanity imports via conda-run (no activation assumptions) --------
+# -------- 4) Sanity imports via conda-run (no activation assumptions) --------
 log "Verifying core packages in env 'venv'…"
 conda run -n venv python - <<'PY'
 import sys, importlib
@@ -66,7 +66,7 @@ for m in mods:
 print("Python:", sys.version)
 PY
 
-# -------- 6) Optional CUDA/Torch probe (non-fatal) --------
+# -------- 5) Optional CUDA/Torch probe (non-fatal) --------
 log "Torch/CUDA check (non-fatal)…"
 conda run -n venv python - <<'PY'
 try:
