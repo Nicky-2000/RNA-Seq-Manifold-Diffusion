@@ -75,14 +75,14 @@ vm.ssh:
 	$(GCLOUD) compute ssh $(REMOTE)
 
 vm.cuda:
-	$(GCLOUD) compute ssh $(REMOTE) -- bash -lc 'PY="$(VM_PY)"; \
-		echo "== nvidia-smi =="; \
+	$(GCLOUD) compute ssh $(REMOTE) -- bash -lc "echo '== nvidia-smi =='; \
 		(nvidia-smi || sudo nvidia-smi || true); \
-		echo "== PyTorch CUDA check =="; \
-		$$PY -c "import torch, sys; \
-print(\"torch:\", getattr(torch, \"__version__\", \"?\")); \
-print(\"cuda available:\", torch.cuda.is_available()); \
-print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"no gpu\")"'
+		echo '== PyTorch CUDA check =='; \
+		$(VM_PY) -c \"import torch, sys; \
+print('torch:', getattr(torch, '__version__', '?')); \
+print('cuda available:', torch.cuda.is_available()); \
+print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no gpu')\""
+
 
 vm.ensure_dirs:
 	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
@@ -124,7 +124,7 @@ qc:
 	  --params configs/params.yml \
 	  --out data/prep \
 	  --adata data/raw/stateFate_inVitro.h5ad
-	  
+
 # -------------------------
 # Data download to GCS from VM
 # -------------------------
