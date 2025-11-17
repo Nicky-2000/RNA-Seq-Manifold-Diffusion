@@ -1,134 +1,197 @@
-# MEDIT – Euclidean vs Manifold Diffusion for Single-Cell Trajectories
+# MEDIT – Single-Cell Preprocessing Pipeline
 
-MEDIT is the reproducible codebase for our UML course project.
+MEDIT is the reproducible preprocessing and infrastructure layer for our UML course project.
 
-**Goal.** Build and compare two diffusion models for single-cell differentiation data:
+Goal: take raw single-cell RNA-seq data (e.g. Weinreb in-vitro hematopoiesis), run a shared QC + preprocessing stack, and produce clean `.h5ad` files in `data/prep/` that the main diffusion repo can consume.
 
-- **Euclidean baseline** – standard DDPM / SDE trained on PCA embeddings.
-- **Manifold-aware model** – diffusion in intrinsic coordinates (e.g. Laplace–Beltrami / heat kernel on a kNN graph).
+Pipeline:
 
-This repo focuses on **data ingestion, QC, and preprocessing** (plus GCP/GCS + VM plumbing).  
-The preprocessed outputs (`data/prep`) are then consumed by the diffusion model code.
+    Raw .h5ad → QC / filtering → HVGs → PCA → data/prep → Diffusion models
 
 ---
 
-## Project Scope
+## Quickstart
 
-We focus on three datasets:
+### 1. Clone the Repository
 
-1. **Weinreb et al. 2020** – lineage-traced hematopoiesis with clonal barcodes and scRNA-seq.
-2. **Waddington-OT (Schiebinger et al. 2019)** – time-course reprogramming used in the WOT paper.
-3. **K562 GWPS (optional extension)** – genome-wide Perturb-seq screen for perturbation → state / fate benchmarking.
+From your machine (this repo is typically embedded inside the main diffusion project):
 
-Each dataset goes through a shared preprocessing stack  
-(Scanpy-based QC → log1p → HVG selection → PCA), then is written to `data/prep/` for downstream diffusion experiments.
+    git clone <MAIN_REPO_URL> MEDIT
+    cd MEDIT/medit_pipeline
 
----
-
-## Repo Layout
-
-Top level:
-
-- `env.yml` – Conda environment for MEDIT.
-- `configs/`
-  - `paths.yml` – Local/GCS layout and external data source URLs.
-  - `params.yml` – QC / preprocessing hyperparameters.
-  - `/manifest` – Manifest of files to fetch into `data/raw/`.
-- `scripts/`
-  - `qc_eda.py` – QC + preprocessing; writes preprocessed data to `data/prep/` and reports to `out/`.
-- `tools/`
-  - `bootstrap_vm.sh` – One-time VM setup (conda env, packages, etc.).
-  - `download_data.sh` – GCS-aware downloader used on the VM.
-  - `init_gcs.sh` – Create GCS prefixes (`data/raw`, `data/prep`, `out`) with `.keep` files.
-  - `cleanup.sh` – Helpers to clean staging directories on the VM.
-- `Makefile` – Runner for different tasks.
-- `start.sh` – Orchestrates the full VM pipeline via `make`.
-- `data/`
-  - `raw/` – Raw downloaded single-cell data (from Figshare/Zenodo/etc.).
-  - `prep/` – Preprocessed outputs from `qc_eda.py` (what the diffusion code consumes).
-- `out/`  
-  - QC plots, logs.
-
-When using GCS, `data/raw`, `data/prep`, and `out` are mirrored under `gs://$BUCKET/`.
+Adjust the path if your folder layout is slightly different.
 
 ---
 
-## Setup
+## GCP / gcloud Setup (Columbia Account)
 
-### 1. Create the Conda environment
+You must use your **Columbia-affiliated Google account** (e.g. `uni@columbia.edu`) that has access to the `medit-478122` project and its billing account.
 
-```bash
-conda env create -f env.yml
-conda activate medit
-```
+1. Install the gcloud CLI (once, on your laptop):
+
+    https://cloud.google.com/sdk/docs/install
+
+2. Log in with your Columbia account:
+
+    gcloud auth login
+
+   In the browser window that opens, pick your `@columbia.edu` account.
+
+3. (Recommended) Set up Application Default Credentials:
+
+    gcloud auth application-default login
+
+   This lets code on your laptop or VM pick up credentials automatically.
+
+4. Set the active GCP project:
+
+    gcloud config set project medit-478122
+    gcloud config list project
+
+   You should see:
+
+    project = medit-478122
+
+5. Link the project to the course billing account (only needs to be done once, by whoever manages billing):
+
+    gcloud beta billing projects link medit-478122       --billing-account=YOUR_BILLING_ACCOUNT_ID
+
+   Replace `YOUR_BILLING_ACCOUNT_ID` with the ID provided by the course staff (looks like `XXXXXX-XXXXXX-XXXXXX`).
+
+6. (Optional but helpful) Set the quota project for ADC:
+
+    gcloud auth application-default set-quota-project medit-478122
+
+This avoids quota warnings when using Application Default Credentials.
 
 ---
 
-## How to Run Things
+## Conda Environment
 
-### VM / cloud usage (recommended for heavy runs)
+From inside `medit_pipeline/`:
 
-Use **`start.sh`** as the one-button entry point:
+    conda env create -f env.yml
+    conda activate medit
 
-```bash
-./start.sh
-```
+This creates and activates the `medit` environment with Scanpy + GCP tooling.
 
-This script:
+---
 
-1. **Bootstraps (or updates) the VM:**
+## Run the Preprocessing Pipeline on the VM
 
-   ```bash
-   make bootstrap
-   ```
+The VM is where downloads + heavy QC runs happen. The entry point is `start.sh`.
 
-2. **Ensures the local workspace directories exist on the VM:**
+From inside `medit_pipeline/`:
 
-   ```bash
-   make vm.ensure_dirs
-   ```
+    ./start.sh
 
-   (Creates `~/Medit/data/raw`, `~/Medit/data/prep`, and `~/Medit/out`.)
+This script will:
 
-3. **Ensures GCS prefixes exist (`data/raw`, `data/prep`, `out`):**
+1. Bootstrap or update the VM
 
-   ```bash
-   make gcs.init
-   ```
+       make bootstrap
 
-4. **Downloads raw data on the VM and uploads it to GCS:**
+   Uploads and runs `tools/bootstrap_vm.sh` to create the conda env, install Python deps, etc.
 
-   ```bash
-   make data.download
-   ```
+2. Ensure local workspace dirs on the VM
 
-5. **Runs a CUDA/Torch sanity check on the VM:**
+       make vm.ensure_dirs
 
-   ```bash
-   make vm.cuda
-   ```
+   Creates:
 
-6. **Runs the MEDIT pipeline (`make all`) on the VM:**
+       ~/MEDIT/data/raw
+       ~/MEDIT/data/prep
+       ~/MEDIT/out
 
-   ```bash
-   make vm.run PIPELINE=all
-   ```
+3. Ensure GCS prefixes exist
 
-7. **Cleans staging downloads on the VM:**
+       make gcs.init
 
-   ```bash
-   make cleanup.staging
-   ```
+   Ensures the bucket has:
 
-You can override project/zone/VM/bucket when calling `start.sh`:
+       gs://$BUCKET/data/raw/
+       gs://$BUCKET/data/prep/
+       gs://$BUCKET/out/
 
-```bash
-PROJECT=medit-478122 ZONE=us-west4-a VM=medit-g2 BUCKET=medit-uml-prod-uscentral1-8e7a ./start.sh
-```
+4. Download raw data on the VM and upload to GCS
+
+       make data.download
+
+   Uses `configs/download_manifest.csv` to fetch files (e.g. `stateFate_inVitro.h5ad`) and place them under `data/raw/`.
+
+5. Run a CUDA / Torch sanity check
+
+       make vm.cuda
+
+6. Run the MEDIT preprocessing pipeline on the VM
+
+       make vm.run PIPELINE=all
+
+   Internally this runs:
+
+       make qc
+
+   which calls:
+
+       python scripts/qc_eda.py          --params configs/params.yml          --out data/prep          --adata data/raw/stateFate_inVitro.h5ad
+
+   (Update the `--adata` path if your raw file lives in a subfolder, e.g. `data/raw/weinreb/stateFate_inVitro.h5ad`.)
+
+7. Clean up staging downloads on the VM
+
+       make cleanup.staging
+
+---
+
+## Local Usage (Optional)
+
+If you already have the raw `.h5ad` locally (for debugging or small runs):
+
+    cd medit_pipeline
+    conda activate medit
+
+    # Put stateFate_inVitro.h5ad into ../data/raw/ first
+    make qc          # or: make all
+
+This will:
+
+- Read the raw file from `../data/raw/…`
+- Write preprocessed AnnData to `../data/prep/`
+- Write QC plots / logs to `../out/`
+
+Your teammate’s diffusion code should then read from `data/prep/*.h5ad`.
+
+---
+
+## 📁 Project Structure (MEDIT Layer)
+
+    medit_pipeline/
+      README.md
+      env.yml
+      Makefile
+      start.sh
+      configs/
+        params.yml              # QC / preprocessing hyperparameters
+        download_manifest.csv   # Raw data download manifest (URL, dst_relpath, sha256)
+      scripts/
+        qc_eda.py               # Scanpy-based QC + preprocessing
+      tools/
+        bootstrap_vm.sh         # VM bootstrap (conda env, packages)
+        download_data.sh        # GCS-aware downloader (used by data.download)
+        init_gcs.sh             # Create data/raw, data/prep, out prefixes in GCS
+        cleanup.sh              # Remove staging / scratch data on VM
+
+Shared data + outputs at repo root:
+
+    data/
+      raw/                      # Raw .h5ad (Weinreb, WOT, K562, …)
+      prep/                     # Preprocessed .h5ad used by diffusion models
+    out/
+      ...                       # QC plots, logs, small manifests
 
 ---
 
 ## Status
 
-- **Stable:** environment setup, raw data download, QC + preprocessing, and GCP/VM plumbing.
-- **Next:** hook `data/prep/*.h5ad` into the diffusion modeling code (Euclidean vs manifold) so both tracks consume the same preprocessed datasets.
+- Stable: gcloud + project config, VM bootstrap, raw data download, QC + preprocessing, and GCS mirroring.
+- Next: hook `data/prep/*.h5ad` into the main diffusion codebase (Euclidean vs manifold), so both tracks share the same preprocessed inputs.
