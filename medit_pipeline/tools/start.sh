@@ -21,13 +21,4 @@ make gcs.init PROJECT="$PROJECT" ZONE="$ZONE" VM="$VM" BUCKET="$BUCKET"
 echo "[*] Downloading raw data to GCS from VM…"
 make data.download PROJECT="$PROJECT" ZONE="$ZONE" VM="$VM" BUCKET="$BUCKET"
 
-echo "[*] CUDA/Torch sanity check on VM…"
-make vm.cuda PROJECT="$PROJECT" ZONE="$ZONE" VM="$VM"
-
-echo "[*] Running MEDIT pipeline (make qc) on VM…"
-make vm.run PROJECT="$PROJECT" ZONE="$ZONE" VM="$VM" PIPELINE=qc
-
-echo "[*] Cleaning staging downloads on VM…"
-make cleanup.staging PROJECT="$PROJECT" ZONE="$ZONE" VM="$VM"
-
 echo "[*] Done."
