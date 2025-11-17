@@ -12,9 +12,9 @@ Pipeline:
 
 ## Quickstart
 
-### 1. Clone the Repository
+### 1. Clone the Repository (locally)
 
-From your machine (this repo is typically embedded inside the main diffusion project):
+From your laptop (this repo is typically embedded inside the main diffusion project):
 
     git clone <MAIN_REPO_URL> MEDIT
     cd MEDIT/medit_pipeline
@@ -52,30 +52,39 @@ You must use your **Columbia-affiliated Google account** (e.g. `uni@columbia.edu
 
     project = medit-478122
 
-5. SSH into VM instance
+5. SSH into the VM instance:
 
     gcloud compute ssh medit-g2 --project=medit-478122 --zone=us-west4-a
 
 ---
 
-## Conda Environment
+## Git / Repo Setup on the VM (first time only)
 
-From inside `medit_pipeline/`:
+These steps are run **inside the VM shell**, after the SSH command above.
 
-    conda env create -f env.yml
-    conda activate medit
+1. Install git (if it isn't already installed):
 
-This creates and activates the `medit` environment with Scanpy + GCP tooling.
+    sudo apt-get update -y
+    sudo apt-get install -y git
 
+2. Clone the main repo into `~/MEDIT`:
+
+    cd ~
+    git clone https://github.com/Nicky-2000/RNA-Seq-Manifold-Diffusion.git MEDIT
+3. Enter the MEDIT pipeline folder on the VM:
+
+    cd ~/MEDIT/medit_pipeline
+
+From here you can set up the conda environment and run the pipeline as below.
 ---
 
 ## Run the Preprocessing Pipeline on the VM
 
-The VM is where downloads + heavy QC runs happen. The entry point is `start.sh`.
+The VM is where downloads + heavy QC runs happen. The entry point is `start.sh`. This script will also setup the conda env.
 
-From inside `medit_pipeline/`:
+From inside `~/MEDIT/medit_pipeline` on the VM:
 
-    ./start.sh
+    ./tools/start.sh
 
 This script will:
 
@@ -125,13 +134,24 @@ This script will:
 
    which calls:
 
-       python scripts/qc_eda.py          --params configs/params.yml          --out data/prep          --adata data/raw/stateFate_inVitro.h5ad
+       python scripts/qc_eda.py \
+         --params configs/params.yml \
+         --out data/prep \
+         --adata data/raw/stateFate_inVitro.h5ad
 
    (Update the `--adata` path if your raw file lives in a subfolder, e.g. `data/raw/weinreb/stateFate_inVitro.h5ad`.)
 
 7. Clean up staging downloads on the VM
 
        make cleanup.staging
+
+You can override project/zone/VM/bucket when calling `start.sh`:
+
+    PROJECT=medit-478122 \
+    ZONE=us-west4-a \
+    VM=medit-g2 \
+    BUCKET=medit-uml-prod-uscentral1-8e7a \
+    ./start.sh
 
 ---
 
@@ -185,5 +205,5 @@ Shared data + outputs at repo root:
 
 ## Status
 
-- Stable: gcloud + project config, VM bootstrap, raw data download, QC + preprocessing, and GCS mirroring.
+- Stable: gcloud + project config, VM bootstrap, git + repo setup, raw data download, QC + preprocessing, and GCS mirroring.
 - Next: hook `data/prep/*.h5ad` into the main diffusion codebase (Euclidean vs manifold), so both tracks share the same preprocessed inputs.

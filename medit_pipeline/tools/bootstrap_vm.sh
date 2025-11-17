@@ -32,22 +32,12 @@ fi
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main || true
 conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r    || true
 
-# -------- 3) Get repo (idempotent) --------
-if [ ! -d "$HOME/MEDIT/.git" ]; then
-  log "Cloning MEDIT..."
-  git clone https://github.com/pvd232/MEDIT.git "$HOME/MEDIT"
-else
-  log "Repo exists; updating..."
-  git -C "$HOME/MEDIT" fetch --all --prune
-  git -C "$HOME/MEDIT" reset --hard origin/main
-fi
-
-# -------- 4) Create/Update env from configs/env.yml (env name: venv) --------
+# -------- 3) Create/Update env from configs/env.yml (env name: venv) --------
 log "Preparing conda (mamba + strict channel priority)…"
 conda config --set channel_priority strict || true
 conda install -y -n base -c conda-forge mamba || true
 
-ENV_FILE="$HOME/MEDIT/configs/env.yml"
+ENV_FILE="$HOME/MEDIT/medit_pipeline/configs/env.yml"
 if [ ! -f "$ENV_FILE" ]; then
   echo "ERROR: $ENV_FILE not found" >&2
   exit 1
