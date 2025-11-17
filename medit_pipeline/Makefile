@@ -90,12 +90,12 @@ PY"'
 PIPELINE ?= all
 vm.run:
 	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
-		cd ~/Medit && \
+		cd ~/MEDIT && \
 		$(MAKE) $(PIPELINE) PY_CMD=\"$(VM_PY)\" "'
 
 vm.ensure_dirs:
 	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
-	  mkdir -p ~/Medit/data/raw ~/Medit/data/prep ~/Medit/out && \
+	  mkdir -p ~/MEDIT/data/raw ~/MEDIT/data/prep ~/MEDIT/out && \
 	  echo \"[ok] ensured local workspace dirs\" "'
 
 # -------------------------
@@ -126,7 +126,7 @@ data.download:
 		chmod +x ~/download_data.sh && \
 		BUCKET='$(BUCKET)' \
 		PREFIX=data/raw \
-		MANIFEST=\$$HOME/Medit/configs/manifest/weinreb_manifest.csv \
+		MANIFEST=\$$HOME/MEDIT/configs/manifest/weinreb_manifest.csv \
 		WORKDIR=\$$HOME/tmp_downloads \
 		~/download_data.sh"'
 
@@ -136,12 +136,12 @@ data.download:
 .PHONY: cleanup.staging cleanup.raw.local cleanup.all
 cleanup.staging:
 	@$(GCLOUD) compute ssh $(VM) --project=$(PROJECT) --zone="$(ZONE)" -- \
-	  'bash -lc "cd ~/Medit && ./tools/cleanup.sh staging"'
+	  'bash -lc "cd ~/MEDIT && ./tools/cleanup.sh staging"'
 
 cleanup.raw.local:
 	@$(GCLOUD) compute ssh $(VM) --project=$(PROJECT) --zone="$(ZONE)" -- \
-	  'bash -lc "cd ~/Medit && ./tools/cleanup.sh raw-local"'
+	  'bash -lc "cd ~/MEDIT && ./tools/cleanup.sh raw-local"'
 
 cleanup.all:
 	@$(GCLOUD) compute ssh $(VM) --project=$(PROJECT) --zone="$(ZONE)" -- \
-	  'bash -lc "cd ~/Medit && ./tools/cleanup.sh all"'
+	  'bash -lc "cd ~/MEDIT && ./tools/cleanup.sh all"'
