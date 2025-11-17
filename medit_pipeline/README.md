@@ -1,4 +1,4 @@
-# MEDIT – Single-Cell Preprocessing Pipeline
+# MEDIT (Manifold-Embedded Diffusion for Inferred Trajectories) – Single-Cell Preprocessing Pipeline
 
 MEDIT is the reproducible preprocessing and infrastructure layer for our UML course project.
 
@@ -52,17 +52,9 @@ You must use your **Columbia-affiliated Google account** (e.g. `uni@columbia.edu
 
     project = medit-478122
 
-5. Link the project to the course billing account (only needs to be done once, by whoever manages billing):
+5. SSH into VM instance
 
-    gcloud beta billing projects link medit-478122       --billing-account=YOUR_BILLING_ACCOUNT_ID
-
-   Replace `YOUR_BILLING_ACCOUNT_ID` with the ID provided by the course staff (looks like `XXXXXX-XXXXXX-XXXXXX`).
-
-6. (Optional but helpful) Set the quota project for ADC:
-
-    gcloud auth application-default set-quota-project medit-478122
-
-This avoids quota warnings when using Application Default Credentials.
+    gcloud compute ssh medit-g2 --project=medit-478122 --zone=us-west4-a
 
 ---
 
