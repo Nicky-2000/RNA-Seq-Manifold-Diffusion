@@ -120,11 +120,7 @@ This script will:
 
    Uses `configs/manifest/weinreb_manifest.csv` to fetch files (e.g. `stateFate_inVitro.h5ad`) and place them under `data/raw/`.
 
-5. Run a CUDA / Torch sanity check
-
-       make vm.cuda
-
-6. Run the MEDIT preprocessing pipeline on the VM
+5. Run the MEDIT preprocessing pipeline on the VM
 
        make vm.run PIPELINE=all
 
@@ -141,7 +137,7 @@ This script will:
 
    (Update the `--adata` path if your raw file lives in a subfolder, e.g. `data/raw/weinreb/stateFate_inVitro.h5ad`.)
 
-7. Clean up staging downloads on the VM
+6. Clean up staging downloads on the VM
 
        make cleanup.staging
 
