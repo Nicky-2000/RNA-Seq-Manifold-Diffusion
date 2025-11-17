@@ -29,7 +29,6 @@ help:
 	@echo "  vm.ssh           : Open interactive SSH to VM"
 	@echo "  vm.run           : Run pipeline target on VM (PIPELINE=<target>, default: qc; enforces 'venv')"
 	@echo "  vm.ensure_dirs   : Ensure ~/Medit/data/raw, data/prep, out on VM"
-	@echo "  all              : Run qc locally (assumes raw data already in data/raw)"
 	@echo "  qc               : Run QC + preprocessing to data/prep locally"
 	@echo "  data.download    : Download raw data on VM → GCS (via tools/download_data.sh)"
 	@echo "  cleanup.*        : Cleanup helpers on VM"
