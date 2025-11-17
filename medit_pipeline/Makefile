@@ -75,16 +75,19 @@ vm.ssh:
 	$(GCLOUD) compute ssh $(REMOTE)
 
 vm.cuda:
-	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
-		PY=\"$(VM_PY)\"; \
-		echo \"== nvidia-smi ==\"; (nvidia-smi || sudo nvidia-smi || true); \
-		echo \"== PyTorch CUDA check ==\"; \
-		$$PY - <<PY \
-import torch, sys; \
+	$(GCLOUD) compute ssh $(REMOTE) -- bash -lc 'PY="$(VM_PY)"; \
+		echo "== nvidia-smi =="; \
+		(nvidia-smi || sudo nvidia-smi || true); \
+		echo "== PyTorch CUDA check =="; \
+		$$PY -c "import torch, sys; \
 print(\"torch:\", getattr(torch, \"__version__\", \"?\")); \
 print(\"cuda available:\", torch.cuda.is_available()); \
-print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"no gpu\"); \
-PY"'
+print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"no gpu\")"'
+
+vm.ensure_dirs:
+	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
+	  mkdir -p ~/MEDIT/data/raw ~/MEDIT/data/prep ~/MEDIT/out && \
+	  echo \"[ok] ensured local workspace dirs\" "'
 
 # Which pipeline target to run on the VM (reuses this Makefile on the VM)
 PIPELINE ?= all
@@ -92,11 +95,6 @@ vm.run:
 	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
 		cd ~/MEDIT && \
 		$(MAKE) $(PIPELINE) PY_CMD=\"$(VM_PY)\" "'
-
-vm.ensure_dirs:
-	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
-	  mkdir -p ~/MEDIT/data/raw ~/MEDIT/data/prep ~/MEDIT/out && \
-	  echo \"[ok] ensured local workspace dirs\" "'
 
 # -------------------------
 # LOCAL pipeline (uses LOCAL_PY by default)
