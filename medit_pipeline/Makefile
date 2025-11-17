@@ -78,41 +78,15 @@ vm.ensure_dirs:
 	  echo \"[ok] ensured local workspace dirs\" "'
 
 # -------------------------
-# Run a target on the VM (reuses this Makefile on the VM)
-#
-# PIPELINE controls which Make target runs on the VM.
-# We default to `qc`, since that's the only real step right now.
-#
-# Examples (from your laptop):
-#   make vm.run                 # runs `make qc` on the VM
-#   make vm.run PIPELINE=qc     # same as above (explicit)
+# Run the QC preprocessing on the VM
 # -------------------------
-PIPELINE ?= qc
-
 vm.run:
-	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
+	$(GCLOUD) compute ssh $(REMOTE) -- bash -lc "source ~/miniconda3/etc/profile.d/conda.sh; \
 		cd ~/MEDIT/medit_pipeline && \
-		$(MAKE) $(PIPELINE) PY_CMD=\"$(VM_PY)\" "'
-
-# -------------------------
-# LOCAL qc command (optional; useful for debugging)
-#
-# PY_CMD is the Python runner used *locally*.
-# By default it is just `python`, but you can override, e.g.:
-#   make qc PY_CMD=\"conda run -n medit python\"
-# -------------------------
-PY_CMD ?= $(LOCAL_PY)
-
-.PHONY: qc
-
-# Run QC + preprocessing, writing final prepped data to data/prep
-# (update --adata path if your raw file lives elsewhere)
-qc:
-	$(PY_CMD) scripts/qc_eda.py \
-	  --params configs/params.yml \
-	  --out data/prep \
-	  --adata data/raw/stateFate_inVitro.h5ad
-
+		conda run -n venv python scripts/qc_eda.py \
+			--params configs/params.yml \
+			--out data/prep \
+			--adata data/raw/stateFate_inVitro.h5ad"
 # -------------------------
 # Data download to GCS from VM
 # -------------------------
