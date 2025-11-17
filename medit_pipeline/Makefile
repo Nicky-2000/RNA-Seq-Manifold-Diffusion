@@ -27,7 +27,7 @@ help:
 	@echo "  gcs.init         : Ensure GCS prefixes (data/raw, data/prep, out)"
 	@echo "  gs.ls            : List bucket top-level and common prefixes"
 	@echo "  vm.ssh           : Open interactive SSH to VM"
-	@echo "  vm.run           : Run pipeline target on VM (PIPELINE=<target>, default: all; enforces 'venv')"
+	@echo "  vm.run           : Run pipeline target on VM (PIPELINE=<target>, default: qc; enforces 'venv')"
 	@echo "  vm.ensure_dirs   : Ensure ~/Medit/data/raw, data/prep, out on VM"
 	@echo "  all              : Run qc locally (assumes raw data already in data/raw)"
 	@echo "  qc               : Run QC + preprocessing to data/prep locally"
