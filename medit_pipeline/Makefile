@@ -69,7 +69,7 @@ gs.ls:
 # -------------------------
 # VM utilities
 # -------------------------
-.PHONY: vm.ssh vm.cuda vm.run vm.ensure_dirs
+.PHONY: vm.ssh vm.run vm.ensure_dirs
 vm.ssh:
 	$(GCLOUD) compute ssh $(REMOTE)
 
