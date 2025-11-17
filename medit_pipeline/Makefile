@@ -75,14 +75,14 @@ vm.ssh:
 	$(GCLOUD) compute ssh $(REMOTE)
 
 vm.cuda:
-	$(GCLOUD) compute ssh $(REMOTE) -- bash -lc "echo '== nvidia-smi =='; \
+	$(GCLOUD) compute ssh $(REMOTE) -- bash -lc "source ~/miniconda3/etc/profile.d/conda.sh; \
+		echo '== nvidia-smi =='; \
 		(nvidia-smi || sudo nvidia-smi || true); \
 		echo '== PyTorch CUDA check =='; \
-		$(VM_PY) -c \"import torch, sys; \
+		conda run -n venv python -c \"import torch, sys; \
 print('torch:', getattr(torch, '__version__', '?')); \
 print('cuda available:', torch.cuda.is_available()); \
 print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no gpu')\""
-
 
 vm.ensure_dirs:
 	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
