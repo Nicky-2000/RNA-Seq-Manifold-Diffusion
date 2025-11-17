@@ -47,11 +47,11 @@ sed -i 's/\r$//' "$ENV_FILE"
 
 if conda env list | awk '{print $1}' | grep -qx venv; then
   log "Env 'venv' exists → updating with --prune"
-  (command -v mamba >/dev/null && mamba env update -n venv -f "$ENV_FILE" --prune) || \
+  (command -v mamba >/dev/null && mamba env update -n venv -f "$ENV_FILE" --prune -y) || \
   conda env update -n venv -f "$ENV_FILE" --prune
 else
   log "Creating env 'venv' from $ENV_FILE"
-  (command -v mamba >/dev/null && mamba env create -n venv -f "$ENV_FILE") || \
+  (command -v mamba >/dev/null && mamba env create -n venv -f "$ENV_FILE" -y) || \
   conda env create -n venv -f "$ENV_FILE"
 fi
 
