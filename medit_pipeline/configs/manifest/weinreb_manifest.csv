@@ -1,0 +1,6 @@
+# url,dst_relpath,sha256 (sha256 optional)
+https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM4185nnn/GSM4185642/suppl/GSM4185642_stateFate_inVitro_normed_counts.mtx.gz,weinreb/stateFate_inVitro/GSM4185642_stateFate_inVitro_normed_counts.mtx.gz,
+https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM4185nnn/GSM4185642/suppl/GSM4185642_stateFate_inVitro_gene_names.txt.gz,weinreb/stateFate_inVitro/GSM4185642_stateFate_inVitro_gene_names.txt.gz,
+https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM4185nnn/GSM4185642/suppl/GSM4185642_stateFate_inVitro_cell_barcodes.txt.gz,weinreb/stateFate_inVitro/GSM4185642_stateFate_inVitro_cell_barcodes.txt.gz,
+https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM4185nnn/GSM4185642/suppl/GSM4185642_stateFate_inVitro_metadata.txt.gz,weinreb/stateFate_inVitro/GSM4185642_stateFate_inVitro_metadata.txt.gz,
+https://ftp.ncbi.nlm.nih.gov/geo/samples/GSM4185nnn/GSM4185642/suppl/GSM4185642_stateFate_inVitro_clone_matrix.mtx.gz,weinreb/stateFate_inVitro/GSM4185642_stateFate_inVitro_clone_matrix.mtx.gz,
