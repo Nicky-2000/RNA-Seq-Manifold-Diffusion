@@ -1,11 +1,25 @@
-# Inspect contents of the Weinreb .h5ad to update QC ingestion
-python - << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Conda env name (override with ENV_NAME=... if needed)
+ENV_NAME="${ENV_NAME:-venv}"
+
+# Path to the .h5ad file (can be overridden by first arg)
+H5AD_PATH="${1:-data/raw/weinreb/stateFate_inVitro/stateFate_inVitro_normed_counts.h5ad}"
+
+echo "[inspect] Using conda env: ${ENV_NAME}"
+echo "[inspect] Inspecting file: ${H5AD_PATH}"
+echo
+
+# Run the Python inspection code *inside* the conda env
+conda run -n "${ENV_NAME}" python - "${H5AD_PATH}" << 'EOF'
+import sys
 import numpy as np
 import scanpy as sc
 
-path = "data/raw/stateFate_inVitro_normed_counts.h5ad"
+path = sys.argv[1]
 print(f"Loading {path}")
-ad = sc.read_h5ad(path, backed="r")
+ad = sc.read_h5ad(path)
 
 print("\n=== AnnData overview ===")
 print(ad)
@@ -61,5 +75,4 @@ print("\nvar.head():")
 print(ad.var.head())
 print("\nvar_names (first 10):")
 print(ad.var_names[:10].tolist())
-
 EOF
