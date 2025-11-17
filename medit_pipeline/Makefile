@@ -77,15 +77,50 @@ vm.ensure_dirs:
 	  mkdir -p ~/MEDIT/data/raw ~/MEDIT/data/prep ~/MEDIT/out && \
 	  echo \"[ok] ensured local workspace dirs\" "'
 
+vm.cuda:
+	$(GCLOUD) compute ssh $(REMOTE) -- bash -lc "source ~/miniconda3/etc/profile.d/conda.sh; \
+		echo '== nvidia-smi =='; \
+		(nvidia-smi || sudo nvidia-smi || true); \
+		echo '== PyTorch CUDA check =='; \
+		conda run -n venv python -c \"import torch, sys; \
+print('torch:', getattr(torch, '__version__', '?')); \
+print('cuda available:', torch.cuda.is_available()); \
+print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no gpu')\""
+
 # -------------------------
-# Run the QC preprocessing on the VM
+# Run a target on the VM (reuses this Makefile on the VM)
+#
+# PIPELINE controls which Make target runs on the VM.
+# We default to `qc`, since that's the only real step right now.
+#
+# Examples (from your laptop):
+#   make vm.run                 # runs `make qc` on the VM
+#   make vm.run PIPELINE=qc     # same as above (explicit)
 # -------------------------
-vm.run:	
+PIPELINE ?= qc
+
+vm.run:
+	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
 		cd ~/MEDIT/medit_pipeline && \
-		conda run -n venv python scripts/qc_eda.py \
-			--params configs/params.yml \
-			--out data/prep \
-			--adata data/raw/stateFate_inVitro.h5ad"
+		$(MAKE) $(PIPELINE) PY_CMD=\"$(VM_PY)\" "'
+
+# -------------------------
+# Run a target on the VM (reuses this Makefile on the VM)
+#
+# PIPELINE controls which Make target runs on the VM.
+# We default to `qc`, since that's the only real step right now.
+#
+# Examples (from your laptop):
+#   make vm.run                 # runs `make qc` on the VM
+#   make vm.run PIPELINE=qc     # same as above (explicit)
+# -------------------------
+PIPELINE ?= qc
+
+vm.run:
+	$(GCLOUD) compute ssh $(REMOTE) -- 'bash -lc "\
+		cd ~/MEDIT/medit_pipeline && \
+		$(MAKE) $(PIPELINE) PY_CMD=\"$(VM_PY)\" "'
+
 # -------------------------
 # Data download to GCS from VM
 # -------------------------
