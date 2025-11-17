@@ -2,7 +2,7 @@ import pandas as pd
 from scipy.io import mmread
 import anndata as ad
 
-DATA_DIR = "data/raw/weinreb_stateFate_inVitro"
+DATA_DIR = "data/raw"
 
 # 1) Expression matrix (cells x genes)
 X = mmread(f"{DATA_DIR}/GSM4185642_stateFate_inVitro_normed_counts.mtx.gz")
