@@ -80,8 +80,7 @@ vm.ensure_dirs:
 # -------------------------
 # Run the QC preprocessing on the VM
 # -------------------------
-vm.run:
-	$(GCLOUD) compute ssh $(REMOTE) -- bash -lc "source ~/miniconda3/etc/profile.d/conda.sh; \
+vm.run:	
 		cd ~/MEDIT/medit_pipeline && \
 		conda run -n venv python scripts/qc_eda.py \
 			--params configs/params.yml \
