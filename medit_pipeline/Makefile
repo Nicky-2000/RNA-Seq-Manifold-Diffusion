@@ -126,7 +126,7 @@ data.download:
 		chmod +x ~/download_data.sh && \
 		BUCKET='$(BUCKET)' \
 		PREFIX=data/raw \
-		MANIFEST=\$$HOME/Medit/configs/download_manifest.csv \
+		MANIFEST=\$$HOME/Medit/configs/manifest/weinreb_manifest.csv \
 		WORKDIR=\$$HOME/tmp_downloads \
 		~/download_data.sh"'
 

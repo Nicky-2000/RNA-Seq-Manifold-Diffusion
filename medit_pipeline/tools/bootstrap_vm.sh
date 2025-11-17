@@ -80,7 +80,7 @@ except Exception as e:
     print("torch check skipped/failed:", e)
 PY
 
-# -------- 7) System deps for downloads (idempotent) --------
+# -------- 6) System deps for downloads (idempotent) --------
 if ! command -v aria2c >/dev/null 2>&1; then
   log "Installing aria2 for robust downloads…"
   sudo apt-get update -y && sudo apt-get install -y aria2

@@ -12,7 +12,7 @@ set -euo pipefail
 # EG usage
 # WORKDIR="$(pwd)/data/raw/K562_gwps" \
 # PREFIX="data/raw/K562_gwps" \
-# MANIFEST="configs/download_manifest.csv" \
+# MANIFEST="configs/manifest/weinreb_manifest.csv" \
 # ./tools/download_data.sh
 
 # Optional: pick downloader (aria2c if installed, else curl)

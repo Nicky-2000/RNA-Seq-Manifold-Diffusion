@@ -118,7 +118,7 @@ This script will:
 
        make data.download
 
-   Uses `configs/download_manifest.csv` to fetch files (e.g. `stateFate_inVitro.h5ad`) and place them under `data/raw/`.
+   Uses `configs/manifest/weinreb_manifest.csv` to fetch files (e.g. `stateFate_inVitro.h5ad`) and place them under `data/raw/`.
 
 5. Run a CUDA / Torch sanity check
 
