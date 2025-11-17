@@ -86,6 +86,10 @@ download_one() {
     curl -L --retry ${RETRIES} --retry-connrefused --retry-delay 3 -C - -o "${dest_local}" "${url}"
   fi
 
+  echo "==> Copy to local: ${dest_local} -> ${dest_local_repo}"
+  mkdir -p "$(dirname "${dest_local_repo}")"
+  cp -n "${dest_local}" "${dest_local_repo}"
+
   echo "==> Upload: ${dest_local} -> ${dest_gs}"
   gsutil "${GSUTIL_OPTS[@]}" cp -n "${dest_local}" "${dest_gs}"
 
