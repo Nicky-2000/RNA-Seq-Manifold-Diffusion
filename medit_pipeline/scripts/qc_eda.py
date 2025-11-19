@@ -64,8 +64,8 @@ def prep(ad: sc.AnnData, params: Dict[str, Any]):
     totals = np.ravel(ad.X.sum(axis=1))
     ad = ad[totals > 0, :].copy()
 
-    # Cells with high percent of mitochondrial DNA are dying or damaged
-    ad = ad[ad.obs["mitopercent"] < float(params["qc"]["max_pct_mt"])].copy()
+    # # Cells with high percent of mitochondrial DNA are dying or damaged
+    # ad = ad[ad.obs["mitopercent"] < float(params["qc"]["max_pct_mt"])].copy()
 
     print("AnnData layers:", list(ad.layers.keys()), flush=True)
     print("AnnData obs columns:", list(ad.obs.columns), flush=True)
