@@ -37,12 +37,14 @@ help:
 # VM bootstrap
 # -------------------------
 .PHONY: bootstrap bootstrap.run
+
+# Copies bootstrap script from local machine into VM and runs it
 bootstrap:
 	$(GCLOUD) compute scp tools/bootstrap_vm.sh "$(VM):~/bootstrap_vm.sh" \
 	  --project="$(PROJECT)" --zone="$(ZONE)"
 	$(GCLOUD) compute ssh $(REMOTE) -- \
 	  'bash -lc "chmod +x ~/bootstrap_vm.sh && PROJECT=$(PROJECT) BUCKET=$(BUCKET) ~/bootstrap_vm.sh"'
-
+# Runs bootstrap script on VM
 bootstrap.run:
 	$(GCLOUD) compute ssh $(REMOTE) -- \
 	  'bash -lc "PROJECT=$(PROJECT) BUCKET=$(BUCKET) ~/bootstrap_vm.sh"'

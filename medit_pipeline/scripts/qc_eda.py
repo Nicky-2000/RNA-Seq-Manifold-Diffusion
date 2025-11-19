@@ -52,6 +52,11 @@ def is_integer_like_matrix(M) -> bool:
 
 def prep(ad: sc.AnnData, params: Dict[str, Any]):
     n_cells = ad.n_obs
+    print("[qc] running built-in Scanpy QC metrics", flush=True)
+    sc.pp.calculate_qc_metrics(ad, inplace=True)
+
+    # Optionally inspect
+    print(ad.obs[["n_genes_by_counts", "total_counts", "pct_counts_mt"]].head())
 
     # Remove genes that are not statistically relevant (< 0.1% of cells)
     min_cells = max(3, int(0.001 * n_cells))
@@ -63,9 +68,6 @@ def prep(ad: sc.AnnData, params: Dict[str, Any]):
     # Drop zero-count cells
     totals = np.ravel(ad.X.sum(axis=1))
     ad = ad[totals > 0, :].copy()
-
-    # # Cells with high percent of mitochondrial DNA are dying or damaged
-    # ad = ad[ad.obs["mitopercent"] < float(params["qc"]["max_pct_mt"])].copy()
 
     print("AnnData layers:", list(ad.layers.keys()), flush=True)
     print("AnnData obs columns:", list(ad.obs.columns), flush=True)
@@ -181,13 +183,19 @@ def report(ad: sc.AnnData, args: Dict[str], params: Dict[str]) -> None:
     else:
         ad_plot = ad
 
-    # # PCA/Neighbors/UMAP if needed for nicer violins ordering later (optional)
-    # if "X_pca" not in ad_plot.obsm:
-    #     sc.pp.scale(ad_plot, max_value=10)
-    #     sc.pp.pca(ad_plot)
-    #     pca_png = out_dir / "K516_pca.png"
-    #     report_files.append(pca_png)
-    #     sc.pl.pca(ad_plot, svd_solver="arpack", save=pca_png)
+    # PCA/Neighbors/UMAP if needed for nicer violins ordering later (optional)
+    pca_png = out_dir / "weinreb_pca.png"
+    try:
+        if "X_pca" not in ad_plot.obsm:
+            sc.pp.scale(ad_plot, max_value=10)
+            sc.pp.pca(ad_plot)
+
+        sc.pl.pca(ad_plot, show=False, save=None)
+        plt.savefig(pca_png, bbox_inches="tight", dpi=160)
+        plt.close()
+        report_files.append(pca_png)
+    except Exception as e:
+        print(f"[plot] PCA plot failed: {e}")
 
     qc_png = out_dir / "qc_violin.png"
     try:
@@ -239,32 +247,9 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Load full AnnData in backed mode (no 61 GiB dense allocation) ---
-    ad_full = sc.read_h5ad(args.ad, backed="r")
+    ad = sc.read_h5ad(args.ad)
     print(
-        f"[load] full AnnData: n_obs={ad_full.n_obs}, n_vars={ad_full.n_vars}",
-        flush=True,
-    )
-
-    # --- Define unperturbed / control cells: gene == 'non-targeting' ---
-    if "gene" not in ad_full.obs:
-        raise ValueError(
-            "'gene' column not found in ad.obs. "
-            f"Available columns: {list(ad_full.obs.columns)}"
-        )
-
-    is_ctrl = np.asarray(ad_full.obs["gene"] == "non-targeting")
-    n_ctrl = int(is_ctrl.sum())
-    n_pert = int((~is_ctrl).sum())
-    print(f"[split] control/non-targeting cells: {n_ctrl}", flush=True)
-    print(f"[split] perturbed cells: {n_pert}", flush=True)
-
-    if n_ctrl == 0:
-        raise ValueError("No control cells with gene == 'non-targeting' found.")
-
-    # --- Materialize ONLY the non-targeting cells in memory ---
-    ad = ad_full[is_ctrl, :].to_memory()
-    print(
-        f"[load] using {ad.n_obs} non-targeting cells for QC + dim reduction",
+        f"[load] full AnnData: n_obs={ad.n_obs}, n_vars={ad.n_vars}",
         flush=True,
     )
 
