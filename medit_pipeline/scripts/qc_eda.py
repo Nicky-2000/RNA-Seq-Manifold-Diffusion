@@ -14,7 +14,10 @@ from scipy import sparse
 import subprocess
 import yaml
 import matplotlib.pyplot as plt
-from dcol_pca import dcol_pca0, plot_spectral
+# from dcol_pca import dcol_pca0, plot_spectral
+# from sklearn.decomposition import KernelPCA
+# import scvi
+# import phate
 
 # Example use
 # conda run -n venv python scripts/qc_eda.py   --params configs/params.yml   --out out/interim   --ad data/raw/K562_gwps/k562_replogie.h5ad   --report   --report-to-gcs gs://medit-uml-prod-uscentral1-8e7a/out/interim   --plot-max-cells 10000
@@ -235,7 +238,6 @@ def report(ad: sc.AnnData, args: Dict[str], params: Dict[str]) -> None:
     else:
         print("[report] no --report-to-gcs provided; keeping local files only.")
 
-
 def main() -> None:
     args = build_argparser().parse_args()
     params: Dict[str, Any] = yaml.safe_load(Path(args.params).read_text())
@@ -264,70 +266,11 @@ def main() -> None:
     qc_ad = prep(ad.copy(), params)
 
     # ---- reporting (optional) ----
-    # report(qc_ad)
-
-    n_pcs = int(params["spec"]["n_pcs"])
-    max_cells_dcol = int(params["spec"]["dcol_max_cells"])
-
-    if qc_ad.n_obs > max_cells_dcol:
-        rng = np.random.default_rng(0)
-        idx = np.sort(rng.choice(qc_ad.n_obs, size=max_cells_dcol, replace=False))
-        qc_dcol = qc_ad[idx, :].copy()
-        print(
-            f"[dcol_pca] subsampled {max_cells_dcol}/{qc_ad.n_obs} cells for DCOL-PCA"
-        )
-
-    else:
-        qc_dcol = qc_ad
-        print(f"[dcol_pca] using all {qc_ad.n_obs} cells for DCOL-PCA")
-
-    X_sub = qc_dcol.X
-
-    # Make a dense matrix for the *subset only*
-    # and only if sparse
-    print(
-        "[dcol_pca] subset shape:", qc_dcol.shape, "sparse?", sparse.issparse(qc_dcol.X)
-    )
-    if sparse.issparse(qc_dcol.X):
-        X_sub = X_sub.toarray()
-
-    K_sub = dcol_pca0(X_sub, nPC_max=n_pcs, Scale=True)
-    vecs = K_sub["vecs"]  # shape n_genes x n_pcs
-
-    # --- Inspect DCOL spectrum numerically ---
-    vals = np.asarray(K_sub["vals"], float)
-    pos = vals[vals > 0]
-    var_ratio = pos / pos.sum()
-    cum_ratio = np.cumsum(var_ratio)
-
-    print("[dcol_pca] eigenvalues + variance fractions:")
-    for i, (lam, vr, cr) in enumerate(zip(vals, var_ratio, cum_ratio), start=1):
-        print(f"  PC{i:2d}: eig={lam:9.4f}, frac={vr:7.4f}, cum={cr:7.4f}")
-
-    # Project all cells using the same gene loadings
-    X_full = qc_ad.X
-    X_proj_full = X_full @ vecs
-    qc_ad.obsm["X_dcolpca"] = X_proj_full
-    d_plot = plot_spectral(K_sub["vals"], out_dir, "dcol-pca")
-
-    # =========================
-    # regular PCA ablation
-    # =========================
-    sc.tl.pca(qc_ad, n_comps=n_pcs, use_highly_variable=False, zero_center=False)
-
-    pca_vals = qc_ad.uns["pca"]["variance"]
-    pca_var = pca_vals / pca_vals.sum()
-    pca_cum = np.cumsum(pca_var)
-    print("[pca] eigenvalues + variance fractions:")
-    for i, (lam, vr, cr) in enumerate(zip(pca_vals, pca_var, pca_cum), start=1):
-        print(f"  PC{i:2d}: eig={lam:9.4f}, frac={vr:7.4f}, cum={cr:7.4f}")
-        pca_plot = plot_spectral(pca_vals, out_dir, "reg-pca")
+    if args.report:
+        report(qc_ad)
 
     qc_path = out_dir / "qc.h5ad"
     qc_ad.write_h5ad(qc_path)
-    #  Upload if requested
-    if args.report_to_gcs:
-        _try_gsutil_cp([qc_path, d_plot, pca_plot], args.report_to_gcs)
 
 
 if __name__ == "__main__":
