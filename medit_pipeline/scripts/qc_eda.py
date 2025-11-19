@@ -55,9 +55,6 @@ def prep(ad: sc.AnnData, params: Dict[str, Any]):
     print("[qc] running built-in Scanpy QC metrics", flush=True)
     sc.pp.calculate_qc_metrics(ad, inplace=True)
 
-    # Optionally inspect
-    print(ad.obs[["n_genes_by_counts", "total_counts", "pct_counts_mt"]].head())
-
     # Remove genes that are not statistically relevant (< 0.1% of cells)
     min_cells = max(3, int(0.001 * n_cells))
     sc.pp.filter_genes(ad, min_cells=min_cells)
