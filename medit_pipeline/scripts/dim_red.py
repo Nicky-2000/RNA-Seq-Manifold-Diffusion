@@ -315,24 +315,7 @@ def dim_red(
     qc_ad.obsm["X_diff_dcol"] = X_diff_dcol
 
     # =========================
-    # 4. Kernel PCA (RBF)
-    # =========================
-    X = qc_ad.X
-    if sparse.issparse(X):
-        X = X.toarray()
-
-    kpca = KernelPCA(
-        n_components=n_pcs,
-        kernel="rbf",
-        gamma=1e-3,  # could tune
-        fit_inverse_transform=False,
-        random_state=0,
-    )
-    X_kpca = kpca.fit_transform(X)  # (n_cells x n_pcs)
-    qc_ad.obsm["X_kpca"] = X_kpca
-
-    # =========================
-    # 5. scVI latent space
+    # 4. scVI latent space
     # =========================
     scvi.model.SCVI.setup_anndata(qc_ad, layer=None)
     scvi_model = scvi.model.SCVI(qc_ad, n_latent=n_pcs)
@@ -341,7 +324,7 @@ def dim_red(
     qc_ad.obsm["X_scvi"] = X_scvi  # (n_cells x n_pcs)
 
     # =========================
-    # 6. PHATE embedding
+    # 5. PHATE embedding
     # =========================
     X = qc_ad.X
     if sparse.issparse(X):
@@ -352,7 +335,7 @@ def dim_red(
     qc_ad.obsm["X_phate"] = X_phate  # (n_cells x n_pcs)
 
     # =========================
-    # 7. ARI computation across methods
+    # 6. ARI computation across methods
     # =========================
     def _compute_ari(emb: np.ndarray, name: str) -> float:
         if emb.ndim != 2:
@@ -370,7 +353,6 @@ def dim_red(
         "pca": qc_ad.obsm["X_pca"],
         "diffmap_pca": qc_ad.obsm["X_diff_pca"],
         "diffmap_dcol": qc_ad.obsm["X_diff_dcol"],
-        "kpca_rbf": qc_ad.obsm["X_kpca"],
         "scvi": qc_ad.obsm["X_scvi"],
         "phate": qc_ad.obsm["X_phate"],
     }
