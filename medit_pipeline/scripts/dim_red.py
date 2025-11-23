@@ -23,11 +23,11 @@ from sklearn.metrics import adjusted_rand_score
 import matplotlib.pyplot as plt
 import scvi
 import phate
-
 from dcol_pca import dcol_pca0, plot_spectral
+from EGGFM.eggfm import run_eggfm_dimred
 
 # Example use
-# conda run -n venv python scripts/qc_eda.py   --params configs/params.yml   --out out/interim   --ad data/raw/K562_gwps/k562_replogie.h5ad   --report   --report-to-gcs gs://medit-uml-prod-uscentral1-8e7a/out/interim   --plot-max-cells 10000
+# conda run -n venv python scripts/dim_red.py   --params configs/params.yml   --out out   --ad data/prep/qc.h5ad   --plot-max-cells 10000 --report-to-gcs gs://medit-uml-prod-uscentral1-8e7a/out
 
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="QC + EDA for unperturbed cells.")
@@ -206,32 +206,14 @@ def dim_red(
     - ARI requires a label column in qc_ad.obs; we read it from
       params["spec"]["ari_label_key"] (e.g., "gene" or "label").
     """    
-
-    # ----- ARI label setup -----
-    spec = params.get("spec", {})
-    label_key = spec.get("ari_label_key", None)
-    if label_key is None or label_key not in qc_ad.obs:
-        raise ValueError(
-            "ARI requested but 'ari_label_key' not set in params['spec'] "
-            f"or not found in qc_ad.obs. Got ari_label_key={label_key!r}."
-        )
-
-    labels = qc_ad.obs[label_key].to_numpy()
-    unique_labels = np.unique(labels)
-    if unique_labels.size < 2:
-        raise ValueError(
-            f"Need at least 2 unique labels for ARI; got {unique_labels.size} "
-            f"for label_key={label_key!r}."
-        )
-
-    n_clusters = unique_labels.size
+    spec = params.get("spec")
     n_pcs = int(spec.get("n_pcs", 10))
     max_cells_dcol = int(spec.get("dcol_max_cells", 3000))
-    ari_k = int(spec.get("ari_n_dims", min(n_pcs, 10)))  # dims for ARI
 
     # =========================
     # 1. DCOL-PCA (fit on subset, project all cells)
     # =========================
+
     if qc_ad.n_obs > max_cells_dcol:
         rng = np.random.default_rng(0)
         idx = np.sort(rng.choice(qc_ad.n_obs, size=max_cells_dcol, replace=False))
@@ -314,6 +296,14 @@ def dim_red(
     X_diff_dcol = qc_ad.obsm["X_diffmap"][:, :n_pcs]
     qc_ad.obsm["X_diff_dcol"] = X_diff_dcol
 
+    # (c) Diffmap with EGGFM
+    # run EGGFM
+    run_eggfm_dimred(qc_ad, params)
+    sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_eggfm")
+    sc.tl.diffmap(qc_ad, n_comps=n_pcs)
+    X_diff_dcol = qc_ad.obsm["X_diffmap"][:, :n_pcs]
+    qc_ad.obsm["X_diff_eggfm"] = X_diff_dcol
+
     # =========================
     # 4. scVI latent space
     # =========================
@@ -334,9 +324,42 @@ def dim_red(
     X_phate = phate_op.fit_transform(X)
     qc_ad.obsm["X_phate"] = X_phate  # (n_cells x n_pcs)
 
-    # =========================
-    # 6. ARI computation across methods
-    # =========================
+    ari_plot_path = ari(qc_ad, spec, out_dir)
+
+    return dcol_scree_path, pca_scree_path, ari_plot_path
+
+
+def ari(qc_ad, spec, out_dir):
+    # ----- ARI label setup -----
+    label_key = spec.get("ari_label_key", None)
+    if label_key is None or label_key not in qc_ad.obs:
+        raise ValueError(
+            "ARI requested but 'ari_label_key' not set in params['spec'] "
+            f"or not found in qc_ad.obs. Got ari_label_key={label_key!r}."
+        )
+
+    labels = qc_ad.obs[label_key].to_numpy()
+    unique_labels = np.unique(labels)
+    if unique_labels.size < 2:
+        raise ValueError(
+            f"Need at least 2 unique labels for ARI; got {unique_labels.size} "
+            f"for label_key={label_key!r}."
+        )
+
+    n_clusters = unique_labels.size
+    n_pcs = int(spec.get("n_pcs", 10))
+    ari_k = int(spec.get("ari_n_dims", min(n_pcs, 10)))  # dims for ARI
+    embeddings: Dict[str, np.ndarray] = {
+        "dcol_pca": qc_ad.obsm["X_dcolpca"],
+        "pca": qc_ad.obsm["X_pca"],
+        "diffmap_pca": qc_ad.obsm["X_diff_pca"],
+        "diffmap_dcol": qc_ad.obsm["X_diff_dcol"],
+        "scvi": qc_ad.obsm["X_scvi"],
+        "phate": qc_ad.obsm["X_phate"],
+    }
+
+    ari_scores: Dict[str, float] = {}
+
     def _compute_ari(emb: np.ndarray, name: str) -> float:
         if emb.ndim != 2:
             raise ValueError(
@@ -348,16 +371,6 @@ def dim_red(
         ari = adjusted_rand_score(labels, km.labels_)
         return float(ari)
 
-    embeddings: Dict[str, np.ndarray] = {
-        "dcol_pca": qc_ad.obsm["X_dcolpca"],
-        "pca": qc_ad.obsm["X_pca"],
-        "diffmap_pca": qc_ad.obsm["X_diff_pca"],
-        "diffmap_dcol": qc_ad.obsm["X_diff_dcol"],
-        "scvi": qc_ad.obsm["X_scvi"],
-        "phate": qc_ad.obsm["X_phate"],
-    }
-
-    ari_scores: Dict[str, float] = {}
     for name, emb in embeddings.items():
         try:
             ari = _compute_ari(emb, name)
@@ -387,8 +400,7 @@ def dim_red(
     ari_plot_path = out_dir / "dimred_ari_comparison.png"
     plt.savefig(ari_plot_path, bbox_inches="tight", dpi=160)
     plt.close(fig)
-
-    return dcol_scree_path, pca_scree_path, ari_plot_path
+    return ari_plot_path
 
 
 def main() -> None:
