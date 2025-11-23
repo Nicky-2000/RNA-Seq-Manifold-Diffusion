@@ -7,6 +7,7 @@ log() { printf "\n[%s] %s\n" "$(date +'%F %T')" "$*"; }
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi || true
 else
+  # might require sudo path on some images
   sudo nvidia-smi 2>/dev/null || true
 fi
 
@@ -27,41 +28,38 @@ else
   eval "$("$HOME/miniconda3/bin/conda" shell.bash hook)"
 fi
 
-# -------- 2) Mamba + channel priority --------
+# -------- 2) Accept Anaconda ToS once (safe if not needed) --------
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main || true
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r    || true
+
+# -------- 3) Create/Update env from configs/env.yml (env name: venv) --------
 log "Preparing conda (mamba + strict channel priority)…"
 conda config --set channel_priority strict || true
 conda install -y -n base -c conda-forge mamba || true
 
-# -------- 3) Create/Update env from configs/env_fast.yml (or env.yml) --------
-ENV_FILE="$HOME/MEDIT/medit_pipeline/configs/env.yml"  # <- change this if you prefer env.yml
+ENV_FILE="$HOME/MEDIT/medit_pipeline/configs/env.yml"
 if [ ! -f "$ENV_FILE" ]; then
   echo "ERROR: $ENV_FILE not found" >&2
   exit 1
 fi
-
-sed -i 's/\r$//' "$ENV_FILE"  # normalize CRLF just in case
+# normalize CRLF just in case
+sed -i 's/\r$//' "$ENV_FILE"
 
 if conda env list | awk '{print $1}' | grep -qx venv; then
-  log "Env 'venv' exists → updating with --prune (mamba if possible)…"
-  if command -v mamba >/dev/null 2>&1; then
-    mamba env update -n venv -f "$ENV_FILE" --prune -y
-  else
-    conda env update -n venv -f "$ENV_FILE" --prune -y
-  fi
+  log "Env 'venv' exists → updating with --prune"
+  (command -v mamba >/dev/null && mamba env update -n venv -f "$ENV_FILE" --prune -y) || \
+  conda env update -n venv -f "$ENV_FILE" --prune
 else
-  log "Creating env 'venv' from $ENV_FILE (mamba if possible)…"
-  if command -v mamba >/dev/null 2>&1; then
-    mamba env create -n venv -f "$ENV_FILE" -y
-  else
-    conda env create -n venv -f "$ENV_FILE"
-  fi
+  log "Creating env 'venv' from $ENV_FILE"
+  (command -v mamba >/dev/null && mamba env create -n venv -f "$ENV_FILE" -y) || \
+  conda env create -n venv -f "$ENV_FILE"
 fi
 
-# -------- 4) Sanity imports via conda-run --------
+# -------- 4) Sanity imports via conda-run (no activation assumptions) --------
 log "Verifying core packages in env 'venv'…"
 conda run -n venv python - <<'PY'
 import sys, importlib
-mods = ["scanpy", "numpy", "scipy", "pandas"]
+mods = ["scanpy","numpy","scipy","pandas"]
 for m in mods:
     mod = importlib.import_module(m)
     print(f"[OK] {m} {getattr(mod,'__version__','?')}")
