@@ -1,0 +1,79 @@
+# =========================
+# MEDIT — Docker GPU Makefile
+# =========================
+
+PROJECT ?= medit-478122
+ZONE    ?= us-west4-a
+VM      ?= medit-g2
+REGION  ?= us-central1
+REPO    ?= medit
+IMAGE   ?= medit:latest
+REMOTE  = $(VM) --project=$(PROJECT) --zone="$(ZONE)"
+GCLOUD  = gcloud
+
+BUCKET  ?= medit-uml-prod-uscentral1-8e7a
+
+WORKDIR = /workspace
+
+.PHONY: help
+help:
+	@echo "Targets:"
+	@echo "  build            : Build docker image locally"
+	@echo "  run.local        : Run docker container locally with GPU"
+	@echo "  push             : Push image to Artifact Registry"
+	@echo "  vm.ssh           : SSH into VM"
+	@echo "  vm.run           : Run pipeline inside container on VM"
+	@echo "  vm.pull          : Pull latest docker image on VM"
+	@echo "  sync.down        : Pull GCS data locally"
+	@echo "  sync.up          : Push local data to GCS"
+
+# ---------------------------------------
+# Local docker build & run
+# ---------------------------------------
+build:
+	docker build -t $(IMAGE) .
+
+run.local:
+	docker run --gpus all -it \
+	  -v $$(pwd):$(WORKDIR) \
+	  $(IMAGE)
+
+# ---------------------------------------
+# Push to Artifact Registry
+# ---------------------------------------
+push:
+	docker tag $(IMAGE) $(REGION)-docker.pkg.dev/$(PROJECT)/$(REPO)/medit:latest
+	docker push $(REGION)-docker.pkg.dev/$(PROJECT)/$(REPO)/medit:latest
+
+# ---------------------------------------
+# VM helpers
+# ---------------------------------------
+vm.ssh:
+	$(GCLOUD) compute ssh $(REMOTE)
+
+vm.pull:
+	$(GCLOUD) compute ssh $(REMOTE) -- \
+	  "sudo docker pull $(REGION)-docker.pkg.dev/$(PROJECT)/$(REPO)/medit:latest"
+
+# Example pipeline run:
+#   make vm.run SCRIPT=scripts/dim_red.py ARGS="--params configs/params.yml ..."
+vm.run:
+ifndef SCRIPT
+	$(error You must provide SCRIPT=<path> (e.g., scripts/dim_red.py))
+endif
+	$(GCLOUD) compute ssh $(REMOTE) -- \
+	  "sudo docker run --gpus all --rm \
+	    -v ~/MEDIT/medit_pipeline:$(WORKDIR) \
+	    $(REGION)-docker.pkg.dev/$(PROJECT)/$(REPO)/medit:latest \
+	    python $(WORKDIR)/$(SCRIPT) $(ARGS)"
+
+# ---------------------------------------
+# GCS sync
+# ---------------------------------------
+sync.down:
+	gsutil -m rsync -r gs://$(BUCKET)/data ./data
+	gsutil -m rsync -r gs://$(BUCKET)/out ./out
+
+sync.up:
+	gsutil -m rsync -r ./data gs://$(BUCKET)/data
+	gsutil -m rsync -r ./out gs://$(BUCKET)/out

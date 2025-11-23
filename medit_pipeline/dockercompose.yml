@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  medit:
+    build: .
+    image: medit:latest
+    container_name: medit
+    shm_size: "32gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    volumes:
+      - ./:/workspace
+      - ../data:/data
+    working_dir: /workspace
+    tty: true

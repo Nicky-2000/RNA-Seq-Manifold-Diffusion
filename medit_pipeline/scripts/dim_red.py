@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
 from scipy import sparse
-from sklearn.decomposition import KernelPCA
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score
 import matplotlib.pyplot as plt
@@ -353,6 +352,7 @@ def ari(qc_ad, spec, out_dir):
         "dcol_pca": qc_ad.obsm["X_dcolpca"],
         "pca": qc_ad.obsm["X_pca"],
         "diffmap_pca": qc_ad.obsm["X_diff_pca"],
+        "diffmap_eggfm": qc_ad.obsm["X_diff_eggfm"],
         "diffmap_dcol": qc_ad.obsm["X_diff_dcol"],
         "scvi": qc_ad.obsm["X_scvi"],
         "phate": qc_ad.obsm["X_phate"],
@@ -411,12 +411,8 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     qc_ad = sc.read_h5ad(args.ad)
-    for col in qc_ad.obs.columns:
-        print("col", col)
-
-    for col in qc_ad.var.columns:
-        print("col var", col)
     d_plot, pca_plot, ari_plot = dim_red(qc_ad, params, out_dir)
+    qc_ad.write_h5ad(args.ad)
     #  Upload if requested
     if args.report_to_gcs:
         _try_gsutil_cp([ari_plot, d_plot, pca_plot], args.report_to_gcs)
