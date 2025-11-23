@@ -28,34 +28,44 @@ else
   eval "$("$HOME/miniconda3/bin/conda" shell.bash hook)"
 fi
 
-# -------- 2) Accept Anaconda ToS once (safe if not needed) --------
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main || true
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r    || true
-
-# -------- 3) Create/Update env from configs/env.yml (env name: venv) --------
+# -------- 2) Configure conda + mamba --------
 log "Preparing conda (mamba + strict channel priority)…"
-conda config --set channel_priority strict || true
+
+# Only use the channels we actually care about
+conda config --remove-key channels || true
+conda config --add channels pytorch
+conda config --add channels nvidia
+conda config --add channels conda-forge
+conda config --set channel_priority strict
+
+# Ensure mamba is available in base
 conda install -y -n base -c conda-forge mamba || true
 
-ENV_FILE="$HOME/MEDIT/medit_pipeline/configs/env.yml"
-if [ ! -f "$ENV_FILE" ]; then
-  echo "ERROR: $ENV_FILE not found" >&2
-  exit 1
-fi
-# normalize CRLF just in case
-sed -i 's/\r$//' "$ENV_FILE"
+# Optional but recommended: avoid host CUDA 12.8 fighting pytorch-cuda=12.1
+export CONDA_OVERRIDE_CUDA=12.1
 
-if conda env list | awk '{print $1}' | grep -qx venv; then
-  log "Env 'venv' exists → updating with --prune"
-  (command -v mamba >/dev/null && mamba env update -n venv -f "$ENV_FILE" --prune -y) || \
-  conda env update -n venv -f "$ENV_FILE" --prune
+# -------- 3) Create/Update env from lockfile (env name: venv) --------
+ENV_NAME=venv
+LOCKFILE="configs/env.lock.yml"
+
+if conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+  log "Updating existing env '$ENV_NAME' from $LOCKFILE…"
+  mamba env update \
+    -n "$ENV_NAME" \
+    -f "$LOCKFILE" \
+    --prune \
+    --override-channels \
+    -c pytorch -c nvidia -c conda-forge
 else
-  log "Creating env 'venv' from $ENV_FILE"
-  (command -v mamba >/dev/null && mamba env create -n venv -f "$ENV_FILE" -y) || \
-  conda env create -n venv -f "$ENV_FILE"
+  log "Creating env '$ENV_NAME' from $LOCKFILE…"
+  mamba env create \
+    -n "$ENV_NAME" \
+    -f "$LOCKFILE" \
+    --override-channels \
+    -c pytorch -c nvidia -c conda-forge
 fi
 
-# -------- 4) Sanity imports via conda-run (no activation assumptions) --------
+# -------- 3) Sanity imports via conda-run (no activation assumptions) --------
 log "Verifying core packages in env 'venv'…"
 conda run -n venv python - <<'PY'
 import sys, importlib
@@ -66,7 +76,7 @@ for m in mods:
 print("Python:", sys.version)
 PY
 
-# -------- 5) Optional CUDA/Torch probe (non-fatal) --------
+# -------- 4) Optional CUDA/Torch probe (non-fatal) --------
 log "Torch/CUDA check (non-fatal)…"
 conda run -n venv python - <<'PY'
 try:
@@ -80,7 +90,7 @@ except Exception as e:
     print("torch check skipped/failed:", e)
 PY
 
-# -------- 6) System deps for downloads (idempotent) --------
+# -------- 5) System deps for downloads (idempotent) --------
 if ! command -v aria2c >/dev/null 2>&1; then
   log "Installing aria2 for robust downloads…"
   sudo apt-get update -y && sudo apt-get install -y aria2

@@ -1,5 +1,0 @@
-channels:
-  - pytorch
-  - nvidia
-  - conda-forge
-channel_priority: strict
