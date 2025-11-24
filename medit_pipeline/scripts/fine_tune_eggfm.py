@@ -4,7 +4,7 @@ from typing import Any, Dict
 import scanpy as sc
 import argparse
 import yaml
-from .eggfm import run_eggfm_dimred
+from EGGFM.eggfm import run_eggfm_dimred
 
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="QC + EDA for unperturbed cells.")
