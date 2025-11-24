@@ -96,13 +96,14 @@ def plot_umaps(
         }
 
     out_paths = []
+    ad_tmp = qc_ad.copy()
+
     for obsm_key, title in methods.items():
         if obsm_key not in qc_ad.obsm:
             print(f"[UMAP] skipping {obsm_key}, not in qc_ad.obsm")
             continue
 
         # Work on a copy to avoid overwriting neighbors/UMAP repeatedly
-        ad_tmp = qc_ad.copy()
         ad_tmp.obsm["X_tmp"] = ad_tmp.obsm[obsm_key]
 
         sc.pp.neighbors(ad_tmp, n_neighbors=30, use_rep="X_tmp")
@@ -126,13 +127,18 @@ def plot_umaps(
 from sklearn.neighbors import NearestNeighbors
 
 
-def neighbor_overlap(X1, X2, k=30, n_subsample=5000, seed=0):
+def neighbor_overlap(X1, X2, k=30, n_subsample=2000, seed=0):
     rng = np.random.default_rng(seed)
     n = X1.shape[0]
     idx = np.sort(rng.choice(n, size=min(n_subsample, n), replace=False))
 
-    nn1 = NearestNeighbors(n_neighbors=k + 1).fit(X1)
-    nn2 = NearestNeighbors(n_neighbors=k + 1).fit(X2)
+    nn1 = NearestNeighbors(n_neighbors=k + 1, algorithm="auto", metric="euclidean").fit(
+        X1
+    )
+    nn2 = NearestNeighbors(n_neighbors=k + 1, algorithm="auto", metric="euclidean").fit(
+        X2
+    )
+
     _, inds1 = nn1.kneighbors(X1[idx])
     _, inds2 = nn2.kneighbors(X2[idx])
 
@@ -279,14 +285,19 @@ def ari(qc_ad, spec, out_dir):
 
 
 def main() -> None:
+    print("[main] starting", flush=True)
     args = build_argparser().parse_args()
+    print("[main] parsed args", flush=True)
+
     params: Dict[str, Any] = yaml.safe_load(Path(args.params).read_text())
     spec = params.get("spec")
+    print("[main] loaded params", flush=True)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-
+    print("[main] reading AnnData...", flush=True)
     qc_ad = sc.read_h5ad(args.ad)
+    print("[main] AnnData loaded, computing neighbor_overlap...", flush=True)
 
     X_dp = qc_ad.obsm["X_diff_pca"]
     X_de = qc_ad.obsm["X_diff_eggfm"]
