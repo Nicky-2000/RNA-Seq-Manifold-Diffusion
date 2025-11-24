@@ -16,18 +16,19 @@ eggfm_model:
   hidden_dims: [512, 512, 512, 512]
 
 eggfm_train:
-  batch_size: 4096        # original
+  batch_size: 2048        # original
   num_epochs: 50
-  lr: 1e-3               # original
+  lr: 1e-4               # original
   sigma: 0.1
   device: "cuda"
 
 eggfm_diffmap:
-  n_neighbors: 30
+  n_neighbors: 30        # original
   n_comps: 30
   device: "cuda"
-  hvp_mode: "Hv_norm2"   # original quadratic form
-  hvp_batch_size: 4096
+  hvp_mode: "Hv_norm2"   # original
+  hvp_batch_size: 1024   # original
   eps_mode: "median"
   eps_value: 1.0
+  eps_trunc: "no"        # original
   t: 1.0

@@ -293,11 +293,15 @@ def main() -> None:
     qc_ad = sc.read_h5ad(args.ad)
     print("[main] AnnData loaded, computing neighbor_overlap...", flush=True)
 
-    X_dp = qc_ad.obsm["X_diff_pca"]
-    X_de = qc_ad.obsm["X_diff_eggfm"]
+    # X_dp = qc_ad.obsm["X_diff_pca"]
+    # X_de = qc_ad.obsm["X_diff_eggfm"]
     gcs_paths = []
 
     # umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
+    spec = params.get("spec")
+    n_pcs = int(spec.get("n_pcs", 10))
+    sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_eggfm")
+    sc.tl.diffmap(qc_ad, n_comps=n_pcs)
     ari_path = ari_plot(qc_ad, spec, out_dir)
 
     # gcs_paths += umap_paths
