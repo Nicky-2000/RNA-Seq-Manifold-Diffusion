@@ -17,12 +17,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
 from scipy import sparse
-from sklearn.cluster import KMeans
-from sklearn.metrics import adjusted_rand_score
 import matplotlib.pyplot as plt
 import scvi
 import phate
-from dcol_pca import dcol_pca0, plot_spectral
+from dcol_pca import dcol_pca0
 from EGGFM.eggfm import run_eggfm_dimred
 
 # Example use
@@ -256,8 +254,6 @@ def dim_red(
     X_proj_full_dcol = X_full @ vecs_dcol
     qc_ad.obsm["X_dcolpca"] = X_proj_full_dcol
 
-    dcol_scree_path = plot_spectral(vals_dcol, out_dir, "dcol-pca")
-
     # =========================
     # 2. Regular PCA (fit on the same subset as DCOL)
     # =========================
@@ -277,8 +273,6 @@ def dim_red(
     X_full = qc_ad.X
     X_proj_full_pca = X_full @ pca_loadings
     qc_ad.obsm["X_pca"] = X_proj_full_pca
-
-    pca_scree_path = plot_spectral(pca_vals, out_dir, "reg-pca")
 
     # =========================
     # 3. Diffusion maps (PCA prior & DCOL prior)
@@ -323,85 +317,7 @@ def dim_red(
     X_phate = phate_op.fit_transform(X)
     qc_ad.obsm["X_phate"] = X_phate  # (n_cells x n_pcs)
 
-    ari_plot_path = ari(qc_ad, spec, out_dir)
-
-    return dcol_scree_path, pca_scree_path, ari_plot_path
-
-
-def ari(qc_ad, spec, out_dir):
-    # ----- ARI label setup -----
-    label_key = spec.get("ari_label_key", None)
-    if label_key is None or label_key not in qc_ad.obs:
-        raise ValueError(
-            "ARI requested but 'ari_label_key' not set in params['spec'] "
-            f"or not found in qc_ad.obs. Got ari_label_key={label_key!r}."
-        )
-
-    labels = qc_ad.obs[label_key].to_numpy()
-    unique_labels = np.unique(labels)
-    if unique_labels.size < 2:
-        raise ValueError(
-            f"Need at least 2 unique labels for ARI; got {unique_labels.size} "
-            f"for label_key={label_key!r}."
-        )
-
-    n_clusters = unique_labels.size
-    n_pcs = int(spec.get("n_pcs", 10))
-    ari_k = int(spec.get("ari_n_dims", min(n_pcs, 10)))  # dims for ARI
-    embeddings: Dict[str, np.ndarray] = {
-        "dcol_pca": qc_ad.obsm["X_dcolpca"],
-        "pca": qc_ad.obsm["X_pca"],
-        "diffmap_pca": qc_ad.obsm["X_diff_pca"],
-        "diffmap_eggfm": qc_ad.obsm["X_diff_eggfm"],
-        "diffmap_dcol": qc_ad.obsm["X_diff_dcol"],
-        "scvi": qc_ad.obsm["X_scvi"],
-        "phate": qc_ad.obsm["X_phate"],
-    }
-
-    ari_scores: Dict[str, float] = {}
-
-    def _compute_ari(emb: np.ndarray, name: str) -> float:
-        if emb.ndim != 2:
-            raise ValueError(
-                f"[ARI] embedding {name} is not 2D, got shape={emb.shape}."
-            )
-        k_eff = min(ari_k, emb.shape[1])
-        km = KMeans(n_clusters=n_clusters, n_init=10, random_state=0)
-        km.fit(emb[:, :k_eff])
-        ari = adjusted_rand_score(labels, km.labels_)
-        return float(ari)
-
-    for name, emb in embeddings.items():
-        try:
-            ari = _compute_ari(emb, name)
-            ari_scores[name] = ari
-        except Exception as e:
-            print(f"[ARI] failed for {name}: {e}", flush=True)
-
-    print("[ARI] scores (k dimensions per embedding):")
-    for name, ari in ari_scores.items():
-        print(f"  {name:12s}: ARI = {ari:0.4f}")
-
-    # ----- ARI bar plot -----
-    if len(ari_scores) == 0:
-        raise RuntimeError("[ARI] no ARI scores computed; cannot make ARI plot.")
-
-    methods = list(ari_scores.keys())
-    values = [ari_scores[m] for m in methods]
-
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.bar(methods, values)
-    ax.set_ylabel("Adjusted Rand Index")
-    ax.set_title(f"Clustering ARI across DR methods (k={ari_k})")
-    ax.set_ylim(0, 1.0)
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-
-    ari_plot_path = out_dir / "dimred_ari_comparison.png"
-    plt.savefig(ari_plot_path, bbox_inches="tight", dpi=160)
-    plt.close(fig)
-    return ari_plot_path
-
+    return
 
 def main() -> None:
     args = build_argparser().parse_args()
