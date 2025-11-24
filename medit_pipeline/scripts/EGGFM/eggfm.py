@@ -52,5 +52,13 @@ def run_eggfm_dimred(
     # 2) Build EGGFM DiffMap embedding (no subsampling)
     X_eggfm = build_eggfm_diffmap(qc_ad, energy_model, diff_cfg)
     qc_ad.obsm["X_eggfm"] = X_eggfm
-
+    qc_ad.obsm["X_diff_eggfm"] = X_eggfm  # make sure clustering sees this
+    qc_ad.uns["eggfm_meta"] = {
+        "hidden_dims": model_cfg.get("hidden_dims"),
+        "batch_size": train_cfg.get("batch_size"),
+        "lr": train_cfg.get("lr"),
+        "sigma": train_cfg.get("sigma"),
+        "n_neighbors": diff_cfg.get("n_neighbors"),
+        "hvp_mode": diff_cfg.get("hvp_mode"),
+    }
     return qc_ad, energy_model
