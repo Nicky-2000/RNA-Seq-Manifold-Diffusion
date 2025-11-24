@@ -158,19 +158,13 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--out", required=True, help="out/interim")
     ap.add_argument("--ad", required=True, help="path to unperturbed .h5ad")
     ap.add_argument(
-        "--report", action="store_true", help="emit qc_summary, plots, manifest"
+        "--ari-stab", action="store_true", help="emit qc_summary, plots, manifest"
     )
     ap.add_argument(
         "--report-to-gcs",
         metavar="GS_PREFIX",
         default=None,
         help="If set (e.g., gs://BUCKET/out/interim), upload report files there",
-    )
-    ap.add_argument(
-        "--plot-max-cells",
-        type=int,
-        default=10000,
-        help="Max cells to plot (subsample if larger)",
     )
     return ap
 
@@ -209,7 +203,7 @@ def _try_gsutil_cp(paths: List[Path], gs_prefix: str) -> Dict[str, List[str]]:
     return results
 
 
-def ari(qc_ad, spec, out_dir):
+def ari_plot(qc_ad, spec, out_dir):
     # ----- ARI label setup -----
     label_key = spec.get("ari_label_key", None)
     if label_key is None or label_key not in qc_ad.obs:
@@ -301,13 +295,18 @@ def main() -> None:
 
     X_dp = qc_ad.obsm["X_diff_pca"]
     X_de = qc_ad.obsm["X_diff_eggfm"]
-    ov = neighbor_overlap(X_dp, X_de, k=30)
-    umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
-    ari_stab_path = ari_stability(qc_ad, spec, out_dir)
-    print("Mean neighbor overlap (Diffmap PCA vs EGGFM):", ov)
     gcs_paths = []
     gcs_paths += umap_paths
-    gcs_paths.append(ari_stab_path)
+    gcs_paths.append(ari_path)
+
+    umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
+    ari_path = ari_plot(qc_ad, spec, out_dir)
+    if args.ari_stab:
+        ov = neighbor_overlap(X_dp, X_de, k=30)
+        ari_stab_path = ari_stability(qc_ad, spec, out_dir)
+        gcs_paths.append(ari_path)
+    print("Mean neighbor overlap (Diffmap PCA vs EGGFM):", ov)
+
     #  Upload if requested
     if args.report_to_gcs:
         _try_gsutil_cp(gcs_paths, args.report_to_gcs)
