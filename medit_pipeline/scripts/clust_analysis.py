@@ -304,7 +304,7 @@ def main() -> None:
     if args.ari_stab:
         ov = neighbor_overlap(X_dp, X_de, k=30)
         ari_stab_path = ari_stability(qc_ad, spec, out_dir)
-        gcs_paths.append(ari_path)
+        gcs_paths.append(ari_stab_path)
     print("Mean neighbor overlap (Diffmap PCA vs EGGFM):", ov)
 
     #  Upload if requested
