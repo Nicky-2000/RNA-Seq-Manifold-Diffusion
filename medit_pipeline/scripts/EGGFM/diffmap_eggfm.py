@@ -26,12 +26,40 @@ def build_eggfm_diffmap(
     The rest of the pipeline (kernel -> Markov -> eigendecomposition)
     is unchanged.
     """
-    sc.pp.pca(ad_prep, n_comps=50)
-    X = ad_prep.obsm["X_pca"]
-    if sp_sparse.issparse(X):
-        X = X.toarray()
-    X = np.asarray(X, dtype=np.float32)
-    n_cells, D = X.shape
+    use_pca = diff_cfg.get("use_pca", True)
+    # Geometry space: used for kNN + Euclidean distances
+    if use_pca and "X_pca" in ad_prep.obsm:
+        X_geom = ad_prep.obsm["X_pca"]
+        print(
+            "[EGGFM DiffMap] using X_pca for geometry with shape",
+            X_geom.shape,
+            flush=True,
+        )
+    else:
+        X_geom = ad_prep.X
+        if sp_sparse.issparse(X_geom):
+            X_geom = X_geom.toarray()
+        X_geom = np.asarray(X_geom, dtype=np.float32)
+        print(
+            "[EGGFM DiffMap] using raw X for geometry with shape",
+            X_geom.shape,
+            flush=True,
+        )
+
+    # Energy space: ALWAYS use the original HVG expression matrix,
+    # because that's what the energy model was trained on.
+    X_energy = ad_prep.X
+    if sp_sparse.issparse(X_energy):
+        X_energy = X_energy.toarray()
+    X_energy = np.asarray(X_energy, dtype=np.float32)
+
+    n_cells_geom, D_geom = X_geom.shape
+    n_cells_energy, D_energy = X_energy.shape
+    assert n_cells_geom == n_cells_energy, (
+        "Geometry and energy spaces must have the same number of cells, "
+        f"got {n_cells_geom} vs {n_cells_energy}"
+    )
+    n_cells = n_cells_geom
 
     n_neighbors = diff_cfg.get("n_neighbors", 30)
     n_comps = diff_cfg.get("n_comps", 30)
@@ -42,12 +70,9 @@ def build_eggfm_diffmap(
     eps_mode = diff_cfg.get("eps_mode", "median")
     eps_value = diff_cfg.get("eps_value", 1.0)
 
-    # We'll reuse hvp_batch_size as an edge batch size for convenience
     edge_batch_size = diff_cfg.get("hvp_batch_size", 1024)
-
     t = diff_cfg.get("t", 1.0)
 
-    # Metric / energy-related hyperparams
     metric_gamma = float(diff_cfg.get("metric_gamma", 0.2))
     metric_lambda = float(diff_cfg.get("metric_lambda", 4.0))
     energy_clip_low = float(diff_cfg.get("energy_clip_low", 0.05))
@@ -58,18 +83,24 @@ def build_eggfm_diffmap(
     energy_model = energy_model.to(device)
     energy_model.eval()
 
-    print(f"[EGGFM DiffMap] X shape: {X.shape}", flush=True)
+    print(
+        f"[EGGFM DiffMap] geometry X shape: {X_geom.shape}, "
+        f"energy X shape: {X_energy.shape}",
+        flush=True,
+    )
 
     # ------------------------------------------------------------
-    # 0) Precompute energy E(x) and scalar metric G(x)
+    # 0) Precompute energy E(x) and scalar metric G(x) in ENERGY SPACE
     # ------------------------------------------------------------
     print("[EGGFM DiffMap] computing energies E(x) for all cells...", flush=True)
     with torch.no_grad():
-        X_tensor = torch.from_numpy(X).to(device=device, dtype=torch.float32)
+        X_energy_tensor = torch.from_numpy(X_energy).to(
+            device=device, dtype=torch.float32
+        )
         E_list = []
         for start in range(0, n_cells, energy_batch_size):
             end = min(start + energy_batch_size, n_cells)
-            xb = X_tensor[start:end]
+            xb = X_energy_tensor[start:end]  # (B, D_energy) matches training
             Eb = energy_model(xb)  # (B,)
             E_list.append(Eb.detach().cpu().numpy())
         E_vals = np.concatenate(E_list, axis=0)
@@ -95,15 +126,15 @@ def build_eggfm_diffmap(
     )
 
     # ------------------------------------------------------------
-    # 1) kNN for neighbor selection (Euclidean, only for neighbor indices)
+    # 1) kNN for neighbor selection in GEOMETRY SPACE
     # ------------------------------------------------------------
     print(
-        "[EGGFM DiffMap] building kNN graph (euclidean for neighbor selection)...",
+        "[EGGFM DiffMap] building kNN graph (euclidean in geometry space)...",
         flush=True,
     )
     nn = NearestNeighbors(n_neighbors=n_neighbors + 1, metric="euclidean")
-    nn.fit(X)
-    distances, indices = nn.kneighbors(X)
+    nn.fit(X_geom)
+    distances, indices = nn.kneighbors(X_geom)
 
     # neighbors per cell (excluding self)
     k = indices.shape[1] - 1
@@ -118,6 +149,7 @@ def build_eggfm_diffmap(
 
     # ------------------------------------------------------------
     # 3) Compute conformal energy-based edge lengths ℓ_ij^2
+    #    using geometry space for distances and G from energy space
     # ------------------------------------------------------------
     l2_vals = np.empty(n_edges, dtype=np.float64)
 
@@ -136,22 +168,17 @@ def build_eggfm_diffmap(
         i_batch = rows[start:end]
         j_batch = cols[start:end]
 
-        Xi_batch = X[i_batch]  # (B, D)
-        Xj_batch = X[j_batch]  # (B, D)
-        V_batch = Xj_batch - Xi_batch  # (B, D)
+        Xi_batch = X_geom[i_batch]  # (B, D_geom)
+        Xj_batch = X_geom[j_batch]  # (B, D_geom)
+        V_batch = Xj_batch - Xi_batch
 
-        # Euclidean squared distances
         eucl2 = np.sum(V_batch * V_batch, axis=1)  # (B,)
 
-        # Conformal factor: average metric at the two endpoints
         Gi = G[i_batch]
         Gj = G[j_batch]
         G_edge = 0.5 * (Gi + Gj)
 
-        # Final edge length squared
         q_batch = G_edge * eucl2
-
-        # Numerical floor to avoid zeros
         q_batch[q_batch < 1e-12] = 1e-12
 
         l2_vals[start:end] = q_batch
