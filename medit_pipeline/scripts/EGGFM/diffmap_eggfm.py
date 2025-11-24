@@ -6,7 +6,7 @@ from scipy.sparse.linalg import eigs
 from sklearn.neighbors import NearestNeighbors
 from scipy import sparse as sp_sparse
 import torch
-
+import scanpy as sc
 
 def build_eggfm_diffmap(
     ad_prep,
@@ -26,7 +26,8 @@ def build_eggfm_diffmap(
     The rest of the pipeline (kernel -> Markov -> eigendecomposition)
     is unchanged.
     """
-    X = ad_prep.X
+    sc.pp.pca(ad_prep, n_comps=50)
+    X = ad_prep.obsm["X_pca"]
     if sp_sparse.issparse(X):
         X = X.toarray()
     X = np.asarray(X, dtype=np.float32)
