@@ -12,23 +12,19 @@ qc:
   min_genes: 200
   max_pct_mt: 15
 
-eggfm_model:
-  hidden_dims: [512, 512, 512, 512]
-
-eggfm_train:
-  batch_size: 2048        # original
-  num_epochs: 50
-  lr: 1e-4               # original
-  sigma: 0.1
-  device: "cuda"
-
 eggfm_diffmap:
-  n_neighbors: 30        # original
+  n_neighbors: 30
   n_comps: 30
   device: "cuda"
-  hvp_mode: "Hv_norm2"   # original
-  hvp_batch_size: 1024   # original
+  hvp_batch_size: 1024      # now just edge_batch_size
   eps_mode: "median"
   eps_value: 1.0
-  eps_trunc: "no"        # original
+  eps_trunc: "no"
   t: 1.0
+
+  # NEW: energy-based conformal metric hyperparams
+  metric_gamma: 0.2         # baseline metric weight
+  metric_lambda: 4.0        # how strongly energy rescales distances
+  energy_clip_low: 0.05     # quantile for lower energy clipping
+  energy_clip_high: 0.95    # quantile for upper energy clipping
+  energy_batch_size: 2048   # batch size for E(x) computation

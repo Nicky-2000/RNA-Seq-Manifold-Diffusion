@@ -1,85 +1,11 @@
 # diffmap_eggfm.py
-
 from typing import Dict, Any
 import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import eigs
 from sklearn.neighbors import NearestNeighbors
 from scipy import sparse as sp_sparse
-
 import torch
-from torch import Tensor
-
-
-def hessian_quadratic_form_batched(
-    energy_model,
-    X_batch: np.ndarray,  # (B, D) points x_b
-    V_batch: np.ndarray,  # (B, D) directions v_b
-    device: str,
-    mode: str = "Hv_norm2",
-) -> np.ndarray:
-    """
-    Batched Hessian-based quadratic form q_{x_b}(v_b) for b=1..B using HVPs.
-
-    Parameters
-    ----------
-    energy_model : nn.Module
-        Trained energy model: E(x) = <E_theta(x), x>.
-    X_batch : (B, D) np.ndarray
-        Batch of points x_b at which to evaluate the metric.
-    V_batch : (B, D) np.ndarray
-        Batch of directions v_b (e.g. displacements to neighbors).
-    device : str
-        "cuda" or "cpu". Assumes energy_model is already on this device.
-    mode : {"Hv_norm2", "vHv"}
-        - "Hv_norm2": q_b = ||H_E(x_b) v_b||^2  (>= 0, SPD-like).
-        - "vHv":      q_b = v_b^T H_E(x_b) v_b  (can be indefinite).
-
-    Returns
-    -------
-    q_batch : (B,) np.ndarray
-        Quadratic form values q_{x_b}(v_b) per pair.
-    """
-    # Move data to device
-    x = torch.from_numpy(X_batch).to(device=device, dtype=torch.float32)
-    v = torch.from_numpy(V_batch).to(device=device, dtype=torch.float32)
-
-    # We want per-sample Hessian-vector products, so keep x as a batch with grad
-    x = x.requires_grad_(True)
-
-    # 1) First gradient: g_b = ∇_x E(x_b) for each b
-    E: Tensor = energy_model(x).sum()  # sum over batch -> scalar
-    (g,) = torch.autograd.grad(
-        E,
-        x,
-        create_graph=True,  # we need graph for second derivative
-        retain_graph=True,
-        only_inputs=True,
-    )  # g shape: (B, D)
-
-    # 2) For each b, gv_b = g_b · v_b; then sum over b to get scalar
-    gv = (g * v).sum(dim=1)  # (B,)
-    gv_sum = gv.sum()
-
-    # 3) Second gradient: Hv_b = ∇_x gv_b (batched via gv_sum)
-    (Hv,) = torch.autograd.grad(
-        gv_sum,
-        x,
-        create_graph=False,
-        retain_graph=False,
-        only_inputs=True,
-    )  # Hv shape: (B, D)
-
-    if mode == "Hv_norm2":
-        q_batch = (Hv * Hv).sum(dim=1)  # ||H v||^2 per sample
-    elif mode == "vHv":
-        q_batch = (v * Hv).sum(dim=1)  # v^T H v per sample
-    else:
-        raise ValueError(f"Unknown mode for hessian_quadratic_form_batched: {mode}")
-
-    q_batch = q_batch.detach().cpu().numpy()
-    q_batch[q_batch < 1e-12] = 1e-12
-    return q_batch
 
 
 def build_eggfm_diffmap(
@@ -88,8 +14,17 @@ def build_eggfm_diffmap(
     diff_cfg: Dict[str, Any],
 ):
     """
-    Build an EGGFM-aware Diffusion Map embedding using a metric induced by
-    the Hessian of the energy model via batched Hessian-vector products.
+    Build an EGGFM-aware Diffusion Map embedding using a *conformal
+    energy-based metric*:
+
+        G(x) = gamma + lambda * exp(clip(E(x)))
+
+    and edge lengths
+
+        ℓ_ij^2 = 0.5 * (G(x_i) + G(x_j)) * ||x_i - x_j||^2
+
+    The rest of the pipeline (kernel -> Markov -> eigendecomposition)
+    is unchanged.
     """
     X = ad_prep.X
     if sp_sparse.issparse(X):
@@ -99,13 +34,24 @@ def build_eggfm_diffmap(
 
     n_neighbors = diff_cfg.get("n_neighbors", 30)
     n_comps = diff_cfg.get("n_comps", 30)
+
     device = diff_cfg.get("device", "cuda")
     device = device if torch.cuda.is_available() else "cpu"
+
     eps_mode = diff_cfg.get("eps_mode", "median")
     eps_value = diff_cfg.get("eps_value", 1.0)
-    hvp_mode = diff_cfg.get("hvp_mode", "Hv_norm2")
-    hvp_batch_size = diff_cfg.get("hvp_batch_size", 1024)
+
+    # We'll reuse hvp_batch_size as an edge batch size for convenience
+    edge_batch_size = diff_cfg.get("hvp_batch_size", 1024)
+
     t = diff_cfg.get("t", 1.0)
+
+    # Metric / energy-related hyperparams
+    metric_gamma = float(diff_cfg.get("metric_gamma", 0.2))
+    metric_lambda = float(diff_cfg.get("metric_lambda", 4.0))
+    energy_clip_low = float(diff_cfg.get("energy_clip_low", 0.05))
+    energy_clip_high = float(diff_cfg.get("energy_clip_high", 0.95))
+    energy_batch_size = int(diff_cfg.get("energy_batch_size", 2048))
 
     # Move model to device once
     energy_model = energy_model.to(device)
@@ -113,7 +59,43 @@ def build_eggfm_diffmap(
 
     print(f"[EGGFM DiffMap] X shape: {X.shape}", flush=True)
 
+    # ------------------------------------------------------------
+    # 0) Precompute energy E(x) and scalar metric G(x)
+    # ------------------------------------------------------------
+    print("[EGGFM DiffMap] computing energies E(x) for all cells...", flush=True)
+    with torch.no_grad():
+        X_tensor = torch.from_numpy(X).to(device=device, dtype=torch.float32)
+        E_list = []
+        for start in range(0, n_cells, energy_batch_size):
+            end = min(start + energy_batch_size, n_cells)
+            xb = X_tensor[start:end]
+            Eb = energy_model(xb)  # (B,)
+            E_list.append(Eb.detach().cpu().numpy())
+        E_vals = np.concatenate(E_list, axis=0)
+
+    # Clip energies to avoid extreme tails
+    q_low = np.quantile(E_vals, energy_clip_low)
+    q_hi = np.quantile(E_vals, energy_clip_high)
+    E_clip = np.clip(E_vals, q_low, q_hi)
+
+    # Scalar conformal metric field
+    G = metric_gamma + metric_lambda * np.exp(E_clip)  # shape (n_cells,)
+
+    print(
+        "[EGGFM DiffMap] energy stats:",
+        f"min={E_vals.min():.4f}, max={E_vals.max():.4f}, "
+        f"clipped to [{q_low:.4f}, {q_hi:.4f}]",
+        flush=True,
+    )
+    print(
+        "[EGGFM DiffMap] metric G stats:",
+        f"min={G.min():.4f}, max={G.max():.4f}, mean={G.mean():.4f}",
+        flush=True,
+    )
+
+    # ------------------------------------------------------------
     # 1) kNN for neighbor selection (Euclidean, only for neighbor indices)
+    # ------------------------------------------------------------
     print(
         "[EGGFM DiffMap] building kNN graph (euclidean for neighbor selection)...",
         flush=True,
@@ -133,17 +115,20 @@ def build_eggfm_diffmap(
 
     print(f"[EGGFM DiffMap] total edges (directed): {n_edges}", flush=True)
 
-    # 3) Compute metric-aware edge lengths ℓ_ij^2 via batched HVPs
+    # ------------------------------------------------------------
+    # 3) Compute conformal energy-based edge lengths ℓ_ij^2
+    # ------------------------------------------------------------
     l2_vals = np.empty(n_edges, dtype=np.float64)
 
     print(
-        "[EGGFM DiffMap] computing Hessian-based edge lengths in batches...", flush=True
+        "[EGGFM DiffMap] computing conformal energy-based edge lengths...",
+        flush=True,
     )
-    n_batches = (n_edges + hvp_batch_size - 1) // hvp_batch_size
+    n_batches = (n_edges + edge_batch_size - 1) // edge_batch_size
 
     for b in range(n_batches):
-        start = b * hvp_batch_size
-        end = min((b + 1) * hvp_batch_size, n_edges)
+        start = b * edge_batch_size
+        end = min((b + 1) * edge_batch_size, n_edges)
         if start >= end:
             break
 
@@ -154,13 +139,20 @@ def build_eggfm_diffmap(
         Xj_batch = X[j_batch]  # (B, D)
         V_batch = Xj_batch - Xi_batch  # (B, D)
 
-        q_batch = hessian_quadratic_form_batched(
-            energy_model,
-            Xi_batch,
-            V_batch,
-            device=device,
-            mode=hvp_mode,
-        )
+        # Euclidean squared distances
+        eucl2 = np.sum(V_batch * V_batch, axis=1)  # (B,)
+
+        # Conformal factor: average metric at the two endpoints
+        Gi = G[i_batch]
+        Gj = G[j_batch]
+        G_edge = 0.5 * (Gi + Gj)
+
+        # Final edge length squared
+        q_batch = G_edge * eucl2
+
+        # Numerical floor to avoid zeros
+        q_batch[q_batch < 1e-12] = 1e-12
+
         l2_vals[start:end] = q_batch
 
         if (b + 1) % 50 == 0 or b == n_batches - 1:
@@ -169,13 +161,19 @@ def build_eggfm_diffmap(
                 flush=True,
             )
 
-    # # 3.5) Clip extreme metric values (robust metric quantiles)
+    # Optional: clip extreme metric values (robust quantiles)
     if diff_cfg.get("eps_trunc") == "yes":
         q_low = np.quantile(l2_vals, 0.05)
         q_hi = np.quantile(l2_vals, 0.98)
         l2_vals = np.clip(l2_vals, q_low, q_hi)
+        print(
+            f"[EGGFM DiffMap] eps_trunc=yes, clipped l2_vals to [{q_low:.4g}, {q_hi:.4g}]",
+            flush=True,
+        )
 
+    # ------------------------------------------------------------
     # 4) Choose kernel bandwidth ε
+    # ------------------------------------------------------------
     if eps_mode == "median":
         eps = np.median(l2_vals)
     elif eps_mode == "fixed":
@@ -187,7 +185,6 @@ def build_eggfm_diffmap(
     # 5) Build kernel W_ij = exp(-ℓ_ij^2 / eps)
     W_vals = np.exp(-l2_vals / eps)
     W = sparse.csr_matrix((W_vals, (rows, cols)), shape=(n_cells, n_cells))
-    # Symmetrize for robustness
     W = 0.5 * (W + W.T)
 
     # 6) Normalize to Markov matrix P (row-stochastic)
@@ -199,21 +196,18 @@ def build_eggfm_diffmap(
     # 7) Eigendecompose P^T for diffusion map
     k_eigs = n_comps + 1  # include trivial eigenpair
     print("[EGGFM DiffMap] computing eigenvectors...", flush=True)
-    eigvals, eigvecs = eigs(P.T, k=k_eigs, which="LR")  # largest real parts
+    eigvals, eigvecs = eigs(P.T, k=k_eigs, which="LR")
 
     eigvals = eigvals.real
     eigvecs = eigvecs.real
 
-    # sort by eigenvalue magnitude descending
     order = np.argsort(-eigvals)
     eigvals = eigvals[order]
     eigvecs = eigvecs[:, order]
 
-    # drop trivial eigenvector (λ≈1)
     lambdas = eigvals[1 : n_comps + 1]
-    phis = eigvecs[:, 1 : n_comps + 1]  # (n_cells, n_comps)
+    phis = eigvecs[:, 1 : n_comps + 1]
 
-    # Diffusion map coordinates Ψ_t(x_i) = (λ_1^t φ_1(i), ..., λ_m^t φ_m(i))
     diff_coords = phis * (lambdas**t)
 
     print("[EGGFM DiffMap] finished. Embedding shape:", diff_coords.shape, flush=True)
