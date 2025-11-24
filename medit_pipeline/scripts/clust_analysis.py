@@ -1,14 +1,11 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
-import numpy as np
-import scanpy as sc  # type: ignore
 import matplotlib.pyplot as plt
 import numpy as np
 import scanpy as sc
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score
-import matplotlib.pyplot as plt
 import subprocess
 import argparse
 import yaml
@@ -18,7 +15,7 @@ def ari_stability(
     qc_ad: sc.AnnData,
     spec: Dict[str, Any],
     out_dir: Path,
-    n_repeats: int = 50,
+    n_repeats: int = 10,
 ) -> Path:
     label_key = spec.get("ari_label_key", None)
     if label_key is None or label_key not in qc_ad.obs:
