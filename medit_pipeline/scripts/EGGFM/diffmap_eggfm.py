@@ -46,8 +46,7 @@ def build_eggfm_diffmap(
             flush=True,
         )
 
-    # Energy space: ALWAYS use the original HVG expression matrix,
-    # because that's what the energy model was trained on.
+    # Energy space: ALWAYS use the original HVG expression matrix which the energy model was trained on.
     X_energy = ad_prep.X
     if sp_sparse.issparse(X_energy):
         X_energy = X_energy.toarray()
