@@ -296,11 +296,12 @@ def main() -> None:
     X_dp = qc_ad.obsm["X_diff_pca"]
     X_de = qc_ad.obsm["X_diff_eggfm"]
     gcs_paths = []
-    gcs_paths += umap_paths
-    gcs_paths.append(ari_path)
 
     umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
     ari_path = ari_plot(qc_ad, spec, out_dir)
+
+    gcs_paths += umap_paths
+    gcs_paths.append(ari_path)
     if args.ari_stab:
         ov = neighbor_overlap(X_dp, X_de, k=30)
         ari_stab_path = ari_stability(qc_ad, spec, out_dir)
