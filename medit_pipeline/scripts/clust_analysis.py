@@ -202,8 +202,25 @@ def _try_gsutil_cp(paths: List[Path], gs_prefix: str) -> Dict[str, List[str]]:
             print(f"[report] unexpected error uploading {p.name}: {e}")
     return results
 
+from typing import Dict, List
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.metrics import adjusted_rand_score
+from pathlib import Path
 
-def ari_plot(qc_ad, spec, out_dir):
+
+def ari_plot(
+    qc_ad,
+    spec: Dict[str, object],
+    out_dir: Path,
+    embeddings: Dict[str, np.ndarray],
+) -> Path:
+    """
+    Compute ARI for a dict of embeddings and make a barplot.
+
+    embeddings: dict mapping method name -> embedding (n_cells, d)
+    """
     # ----- ARI label setup -----
     label_key = spec.get("ari_label_key", None)
     if label_key is None or label_key not in qc_ad.obs:
@@ -223,15 +240,6 @@ def ari_plot(qc_ad, spec, out_dir):
     n_clusters = unique_labels.size
     n_pcs = int(spec.get("n_pcs", 10))
     ari_k = int(spec.get("ari_n_dims", min(n_pcs, 10)))  # dims for ARI
-    embeddings: Dict[str, np.ndarray] = {
-        "dcol_pca": qc_ad.obsm["X_dcolpca"],
-        "pca": qc_ad.obsm["X_pca"],
-        "diffmap_pca": qc_ad.obsm["X_diff_pca"],
-        "diffmap_eggfm": qc_ad.obsm["X_diff_eggfm"],
-        "diffmap_dcol": qc_ad.obsm["X_diff_dcol"],
-        "scvi": qc_ad.obsm["X_scvi"],
-        "phate": qc_ad.obsm["X_phate"],
-    }
 
     ari_scores: Dict[str, float] = {}
 
@@ -239,6 +247,11 @@ def ari_plot(qc_ad, spec, out_dir):
         if emb.ndim != 2:
             raise ValueError(
                 f"[ARI] embedding {name} is not 2D, got shape={emb.shape}."
+            )
+        if emb.shape[0] != labels.shape[0]:
+            raise ValueError(
+                f"[ARI] embedding {name} has n_cells={emb.shape[0]} "
+                f"but labels have n_cells={labels.shape[0]}."
             )
         k_eff = min(ari_k, emb.shape[1])
         km = KMeans(n_clusters=n_clusters, n_init=10, random_state=0)
@@ -257,15 +270,15 @@ def ari_plot(qc_ad, spec, out_dir):
     for name, ari in ari_scores.items():
         print(f"  {name:12s}: ARI = {ari:0.4f}")
 
-    # ----- ARI bar plot -----
     if len(ari_scores) == 0:
         raise RuntimeError("[ARI] no ARI scores computed; cannot make ARI plot.")
 
-    methods = list(ari_scores.keys())
-    values = [ari_scores[m] for m in methods]
+    # ----- ARI bar plot -----
+    methods_plotted = list(ari_scores.keys())
+    values = [ari_scores[m] for m in methods_plotted]
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.bar(methods, values)
+    ax.bar(methods_plotted, values)
     ax.set_ylabel("Adjusted Rand Index")
     ax.set_title(f"Clustering ARI across DR methods (k={ari_k})")
     ax.set_ylim(0, 1.0)
@@ -303,15 +316,23 @@ def main() -> None:
     qc_ad.write_h5ad(args.ad)
 
     gcs_paths = []
+
     umap_paths = plot_umaps(
         qc_ad,
         spec["ari_label_key"],
         out_dir,
         {
-            "X_diff_eggfm": "Diffmap (EGGFM)",
+            "X_diff_eggfm": "Diffmap (EGGFMx2)",
+            "X_eggfm": "Diffmap (EGGFM)",
         },
     )
-    ari_path = ari_plot(qc_ad, spec, out_dir)
+
+    embeddings = {
+        "diffmap_eggfm_doble": qc_ad.obsm["X_diff_eggfm"],
+        "diffmap_eggfm_pure": qc_ad.obsm["X_eggfm"],  # from build_eggfm_diffmap
+    }
+
+    ari_path = ari_plot(qc_ad, spec, out_dir, embeddings)
 
     gcs_paths += umap_paths
     gcs_paths.append(ari_path)
