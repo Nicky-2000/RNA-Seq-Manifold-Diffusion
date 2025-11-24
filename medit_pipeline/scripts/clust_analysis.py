@@ -297,7 +297,7 @@ def main() -> None:
     # X_de = qc_ad.obsm["X_diff_eggfm"]
     gcs_paths = []
 
-    umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
+    umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir, "X_eggfm")
     spec = params.get("spec")
     n_pcs = int(spec.get("n_pcs", 10))
     sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_eggfm")
