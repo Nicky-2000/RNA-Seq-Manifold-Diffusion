@@ -297,7 +297,7 @@ def main() -> None:
     # X_de = qc_ad.obsm["X_diff_eggfm"]
     gcs_paths = []
 
-    # umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
+    umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
     spec = params.get("spec")
     n_pcs = int(spec.get("n_pcs", 10))
     sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_eggfm")
@@ -308,7 +308,7 @@ def main() -> None:
 
     qc_ad.write_h5ad(args.ad)
 
-    # gcs_paths += umap_paths
+    gcs_paths += umap_paths
     gcs_paths.append(ari_path)
     # if args.ari_stab:
     # ov = neighbor_overlap(X_dp, X_de, k=30)
