@@ -169,10 +169,10 @@ def build_eggfm_diffmap(
                 flush=True,
             )
 
-    # 3.5) Clip extreme metric values (robust metric quantiles)
-    q_low = np.quantile(l2_vals, 0.05)
-    q_hi = np.quantile(l2_vals, 0.98)
-    l2_vals = np.clip(l2_vals, q_low, q_hi)
+    # # 3.5) Clip extreme metric values (robust metric quantiles)
+    # q_low = np.quantile(l2_vals, 0.05)
+    # q_hi = np.quantile(l2_vals, 0.98)
+    # l2_vals = np.clip(l2_vals, q_low, q_hi)
 
     # 4) Choose kernel bandwidth ε
     if eps_mode == "median":

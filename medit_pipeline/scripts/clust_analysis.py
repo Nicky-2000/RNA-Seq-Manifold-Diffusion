@@ -297,16 +297,16 @@ def main() -> None:
     X_de = qc_ad.obsm["X_diff_eggfm"]
     gcs_paths = []
 
-    umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
+    # umap_paths = plot_umaps(qc_ad, spec["ari_label_key"], out_dir)
     ari_path = ari_plot(qc_ad, spec, out_dir)
 
-    gcs_paths += umap_paths
+    # gcs_paths += umap_paths
     gcs_paths.append(ari_path)
-    if args.ari_stab:
-        ov = neighbor_overlap(X_dp, X_de, k=30)
-        ari_stab_path = ari_stability(qc_ad, spec, out_dir)
-        gcs_paths.append(ari_stab_path)
-    print("Mean neighbor overlap (Diffmap PCA vs EGGFM):", ov)
+    # if args.ari_stab:
+    # ov = neighbor_overlap(X_dp, X_de, k=30)
+    # ari_stab_path = ari_stability(qc_ad, spec, out_dir)
+    # gcs_paths.append(ari_stab_path)
+    # print("Mean neighbor overlap (Diffmap PCA vs EGGFM):", ov)
 
     #  Upload if requested
     if args.report_to_gcs:
