@@ -18,68 +18,9 @@ def hessian_quadratic_form_batched(
     device: str,
     mode: str = "Hv_norm2",
 ) -> np.ndarray:
-    """
-    Batched Hessian-based quadratic form q_{x_b}(v_b) for b=1..B using HVPs.
-
-    Parameters
-    ----------
-    energy_model : nn.Module
-        Trained energy model: E(x) = <E_theta(x), x>.
-    X_batch : (B, D) np.ndarray
-        Batch of points x_b at which to evaluate the metric.
-    V_batch : (B, D) np.ndarray
-        Batch of directions v_b (e.g. displacements to neighbors).
-    device : str
-        "cuda" or "cpu". Assumes energy_model is already on this device.
-    mode : {"Hv_norm2", "vHv"}
-        - "Hv_norm2": q_b = ||H_E(x_b) v_b||^2  (>= 0, SPD-like).
-        - "vHv":      q_b = v_b^T H_E(x_b) v_b  (can be indefinite).
-
-    Returns
-    -------
-    q_batch : (B,) np.ndarray
-        Quadratic form values q_{x_b}(v_b) per pair.
-    """
-    # Move data to device
-    x = torch.from_numpy(X_batch).to(device=device, dtype=torch.float32)
-    v = torch.from_numpy(V_batch).to(device=device, dtype=torch.float32)
-
-    # We want per-sample Hessian-vector products, so keep x as a batch with grad
-    x = x.requires_grad_(True)
-
-    # 1) First gradient: g_b = ∇_x E(x_b) for each b
-    E: Tensor = energy_model(x).sum()  # sum over batch -> scalar
-    (g,) = torch.autograd.grad(
-        E,
-        x,
-        create_graph=True,  # we need graph for second derivative
-        retain_graph=True,
-        only_inputs=True,
-    )  # g shape: (B, D)
-
-    # 2) For each b, gv_b = g_b · v_b; then sum over b to get scalar
-    gv = (g * v).sum(dim=1)  # (B,)
-    gv_sum = gv.sum()
-
-    # 3) Second gradient: Hv_b = ∇_x gv_b (batched via gv_sum)
-    (Hv,) = torch.autograd.grad(
-        gv_sum,
-        x,
-        create_graph=False,
-        retain_graph=False,
-        only_inputs=True,
-    )  # Hv shape: (B, D)
-
-    if mode == "Hv_norm2":
-        q_batch = (Hv * Hv).sum(dim=1)  # ||H v||^2 per sample
-    elif mode == "vHv":
-        q_batch = (v * Hv).sum(dim=1)  # v^T H v per sample
-    else:
-        raise ValueError(f"Unknown mode for hessian_quadratic_form_batched: {mode}")
-
-    q_batch = q_batch.detach().cpu().numpy()
-    q_batch[q_batch < 1e-12] = 1e-12
-    return q_batch
+    ...
+    # unchanged from your version
+    ...
 
 
 def build_eggfm_diffmap(
@@ -90,29 +31,6 @@ def build_eggfm_diffmap(
     """
     Build an EGGFM-aware Diffusion Map embedding using a metric induced by
     the Hessian of the energy model via batched Hessian-vector products.
-
-    Parameters
-    ----------
-    ad_prep : AnnData
-        Preprocessed AnnData (HVG, log-normalized).
-    energy_model : nn.Module
-        Trained energy model (EnergyDotProduct).
-    diff_cfg : dict
-        {
-            "n_neighbors": 30,
-            "n_comps": 30,
-            "device": "cuda",
-            "eps_mode": "median",      # or "fixed"
-            "eps_value": 1.0,
-            "hvp_mode": "Hv_norm2",    # or "vHv"
-            "hvp_batch_size": 1024,    # number of edges per HVP batch
-            "t": 1.0,
-        }
-
-    Returns
-    -------
-    diff_coords : np.ndarray, shape (n_cells, n_comps)
-        Diffusion map coordinates (dimension-reduced embedding).
     """
     X = ad_prep.X
     if sp_sparse.issparse(X):
@@ -149,9 +67,7 @@ def build_eggfm_diffmap(
     k = indices.shape[1] - 1
     assert k == n_neighbors, "indices second dimension should be n_neighbors+1"
 
-    # 2) Flatten edges: build arrays of row indices (i) and col indices (j)
-    #    rows: [0,0,...,0, 1,1,...,1, ..., n_cells-1 repeated k times]
-    #    cols: [neighbors_of_0, neighbors_of_1, ..., neighbors_of_{n_cells-1}]
+    # 2) Flatten edges
     rows = np.repeat(np.arange(n_cells, dtype=np.int64), k)
     cols = indices[:, 1:].reshape(-1).astype(np.int64)
     n_edges = rows.shape[0]
@@ -190,9 +106,14 @@ def build_eggfm_diffmap(
 
         if (b + 1) % 50 == 0 or b == n_batches - 1:
             print(
-                f"  processed batch {b+1}/{n_batches} " f"({end} / {n_edges} edges)",
+                f"  processed batch {b+1}/{n_batches} ({end} / {n_edges} edges)",
                 flush=True,
             )
+
+    # 3.5) Clip extreme metric values (robust metric quantiles)
+    q_low = np.quantile(l2_vals, 0.05)
+    q_hi = np.quantile(l2_vals, 0.98)
+    l2_vals = np.clip(l2_vals, q_low, q_hi)
 
     # 4) Choose kernel bandwidth ε
     if eps_mode == "median":

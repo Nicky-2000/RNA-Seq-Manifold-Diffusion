@@ -11,3 +11,25 @@ qc:
   min_cells: 500
   min_genes: 200
   max_pct_mt: 15
+
+eggfm_model:
+  hidden_dims: [512, 512, 512, 512]
+
+eggfm_train:
+  batch_size: 4096         # increase if GPU RAM allows
+  num_epochs: 50
+  lr: 1e-4                 # match paper scale better
+  sigma: 0.1               # within [σ_min, σ_max]
+  device: "cuda"
+
+
+eggfm_diffmap:
+  n_neighbors: 10
+  n_comps: 30
+  device: "cuda"
+  hvp_mode: "vHv"          # try this instead of Hv_norm2
+  hvp_batch_size: 4096
+  eps_mode: "median"       # but on *clipped* l2_vals
+  eps_value: 1.0           # unused if eps_mode="median"
+  t: 1.0
+
