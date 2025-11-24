@@ -18,9 +18,68 @@ def hessian_quadratic_form_batched(
     device: str,
     mode: str = "Hv_norm2",
 ) -> np.ndarray:
-    ...
-    # unchanged from your version
-    ...
+    """
+    Batched Hessian-based quadratic form q_{x_b}(v_b) for b=1..B using HVPs.
+
+    Parameters
+    ----------
+    energy_model : nn.Module
+        Trained energy model: E(x) = <E_theta(x), x>.
+    X_batch : (B, D) np.ndarray
+        Batch of points x_b at which to evaluate the metric.
+    V_batch : (B, D) np.ndarray
+        Batch of directions v_b (e.g. displacements to neighbors).
+    device : str
+        "cuda" or "cpu". Assumes energy_model is already on this device.
+    mode : {"Hv_norm2", "vHv"}
+        - "Hv_norm2": q_b = ||H_E(x_b) v_b||^2  (>= 0, SPD-like).
+        - "vHv":      q_b = v_b^T H_E(x_b) v_b  (can be indefinite).
+
+    Returns
+    -------
+    q_batch : (B,) np.ndarray
+        Quadratic form values q_{x_b}(v_b) per pair.
+    """
+    # Move data to device
+    x = torch.from_numpy(X_batch).to(device=device, dtype=torch.float32)
+    v = torch.from_numpy(V_batch).to(device=device, dtype=torch.float32)
+
+    # We want per-sample Hessian-vector products, so keep x as a batch with grad
+    x = x.requires_grad_(True)
+
+    # 1) First gradient: g_b = ∇_x E(x_b) for each b
+    E: Tensor = energy_model(x).sum()  # sum over batch -> scalar
+    (g,) = torch.autograd.grad(
+        E,
+        x,
+        create_graph=True,  # we need graph for second derivative
+        retain_graph=True,
+        only_inputs=True,
+    )  # g shape: (B, D)
+
+    # 2) For each b, gv_b = g_b · v_b; then sum over b to get scalar
+    gv = (g * v).sum(dim=1)  # (B,)
+    gv_sum = gv.sum()
+
+    # 3) Second gradient: Hv_b = ∇_x gv_b (batched via gv_sum)
+    (Hv,) = torch.autograd.grad(
+        gv_sum,
+        x,
+        create_graph=False,
+        retain_graph=False,
+        only_inputs=True,
+    )  # Hv shape: (B, D)
+
+    if mode == "Hv_norm2":
+        q_batch = (Hv * Hv).sum(dim=1)  # ||H v||^2 per sample
+    elif mode == "vHv":
+        q_batch = (v * Hv).sum(dim=1)  # v^T H v per sample
+    else:
+        raise ValueError(f"Unknown mode for hessian_quadratic_form_batched: {mode}")
+
+    q_batch = q_batch.detach().cpu().numpy()
+    q_batch[q_batch < 1e-12] = 1e-12
+    return q_batch
 
 
 def build_eggfm_diffmap(

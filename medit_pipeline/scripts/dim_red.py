@@ -83,111 +83,9 @@ def _try_gsutil_cp(paths: List[Path], gs_prefix: str) -> Dict[str, List[str]]:
     return results
 
 
-def report(ad: sc.AnnData, args: Dict[str], params: Dict[str]) -> None:
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    report_files: List[Path] = []
-
-    # QC summary CSV
-    obs_cols = [
-        c
-        for c in ["n_counts", "n_genes_by_counts", "mitopercent", "pct_counts_mt"]
-        if c in ad.obs
-    ]
-    if obs_cols:
-        qc_summary = ad.obs[obs_cols].apply(pd.to_numeric, errors="coerce").describe()
-        qc_csv = out_dir / "qc_summary.csv"
-        qc_summary.to_csv(qc_csv)
-        report_files.append(qc_csv)
-
-    # Manifest JSON
-    manifest = {
-        "git": os.popen("git rev-parse --short HEAD").read().strip(),
-        "input": os.path.abspath(args.ad),
-        "params": {
-            "min_genes": params["qc"]["min_genes"],
-            "max_pct_mt": params["qc"]["max_pct_mt"],
-            "hvg_n_top_genes": int(params["hvg_n_top_genes"]),
-        },
-        "n_cells": int(ad.n_obs),
-        "n_genes": int(ad.n_vars),
-        "obs_cols": list(ad.obs.columns)[:25],
-        "var_cols": list(ad.var.columns)[:25],
-    }
-    man_json = out_dir / "manifest_qc.json"
-    man_json.write_text(json.dumps(manifest, indent=2))
-    report_files.append(man_json)
-
-    # Subsample for plotting
-    nmax = int(args.plot_max_cells)
-    if ad.n_obs > nmax:
-        rng = np.random.default_rng(0)
-        idx = np.sort(rng.choice(ad.n_obs, size=nmax, replace=False))
-        ad_plot = ad[idx, :].copy()
-        print(f"[plot] subsampled {nmax}/{ad.n_obs} for speed")
-    else:
-        ad_plot = ad
-
-    # PCA/Neighbors/UMAP if needed for nicer violins ordering later (optional)
-    pca_png = out_dir / "weinreb_pca.png"
-    try:
-        if "X_pca" not in ad_plot.obsm:
-            sc.pp.scale(ad_plot, max_value=10)
-            sc.pp.pca(ad_plot)
-
-        sc.pl.pca(ad_plot, show=False, save=None)
-        plt.savefig(pca_png, bbox_inches="tight", dpi=160)
-        plt.close()
-        report_files.append(pca_png)
-    except Exception as e:
-        print(f"[plot] PCA plot failed: {e}")
-
-    qc_png = out_dir / "qc_violin.png"
-    try:
-        sc.pl.violin(
-            ad_plot,
-            keys=["n_counts", "n_genes_by_counts", "mitopercent"],
-            jitter=0.4,
-            multi_panel=True,
-            show=False,
-            save=None,
-        )
-        plt.savefig(qc_png, bbox_inches="tight", dpi=160)
-        plt.close()
-        report_files.append(qc_png)
-    except Exception as e:
-        print(f"[plot] violin failed: {e}")
-
-    # 2) HVG overview
-    hvg_png = out_dir / "hvg.png"
-    try:
-        sc.pl.highly_variable_genes(ad_plot, show=False, save=None)
-        plt.savefig(hvg_png, bbox_inches="tight", dpi=160)
-        plt.close()
-        report_files.append(hvg_png)
-    except Exception as e:
-        print(f"[plot] hvg plot failed: {e}")
-
-    print(f"[report] wrote locally: {[p.name for p in report_files]}")
-
-    # ---- Optional GCS upload (AFTER local writes) ----
-    if args.report_to_gcs:
-        results = _try_gsutil_cp(report_files, args.report_to_gcs)
-        if results["uploaded"]:
-            print("[report] uploaded to GCS:", ", ".join(results["uploaded"]))
-        if results["failed"]:
-            print(
-                "[report] kept local copies for (upload failed):",
-                ", ".join(results["failed"]),
-            )
-    else:
-        print("[report] no --report-to-gcs provided; keeping local files only.")
-
-
 def dim_red(
     qc_ad: sc.AnnData,
     params: Dict[str, Any],
-    out_dir: str | Path,
 ) -> tuple[Path, Path, Path]:
     """
     Run multiple dimension reduction methods, compute ARI for each, and
@@ -318,6 +216,7 @@ def dim_red(
     qc_ad.obsm["X_phate"] = X_phate  # (n_cells x n_pcs)
 
     return
+
 
 def main() -> None:
     args = build_argparser().parse_args()
