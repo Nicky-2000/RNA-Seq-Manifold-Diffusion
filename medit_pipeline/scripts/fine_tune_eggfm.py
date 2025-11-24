@@ -25,7 +25,7 @@ def main() -> None:
     print("[main] reading AnnData...", flush=True)
     qc_ad = sc.read_h5ad(args.ad)
     print("[main] AnnData loaded, computing neighbor_overlap...", flush=True)
-    qc_ad = run_eggfm_dimred(qc_ad,params)    
+    qc_ad, _ = run_eggfm_dimred(qc_ad, params)
     qc_ad.write_h5ad(args.ad)
 
 if __name__ == "__main__":
