@@ -4,7 +4,7 @@ from typing import Any, Dict
 import scanpy as sc
 import argparse
 import yaml
-from .eggfm import run_eggfm_dimred
+from EGGFM.eggfm import run_eggfm_dimred
 
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="QC + EDA for unperturbed cells.")
@@ -26,5 +26,3 @@ def main() -> None:
     print("[main] AnnData loaded, computing neighbor_overlap...", flush=True)
     qc_ad = run_eggfm_dimred(qc_ad,params)    
     qc_ad.write_h5ad(args.ad)
-
-    
