@@ -113,6 +113,11 @@ def build_eggfm_diffmap(
         E_clip = np.clip(E_vals, q_low, q_hi)
         # Scalar conformal metric field
         G = metric_gamma + metric_lambda * np.exp(E_clip)  # shape (n_cells,)
+        print(
+            "[EGGFM DiffMap] metric G stats: "
+            f"min={G.min():.4f}, max={G.max():.4f}, mean={G.mean():.4f}",
+            flush=True,
+        )
 
     elif clip_mode == "current":
         # Robust center & scale energies
@@ -140,12 +145,6 @@ def build_eggfm_diffmap(
             f"clip=[{-max_abs:.1f}, {max_abs:.1f}]",
             flush=True,
         )
-
-    print(
-        "[EGGFM DiffMap] metric G stats: "
-        f"min={G.min():.4f}, max={G.max():.4f}, mean={G.mean():.4f}",
-        flush=True,
-    )
 
     # ------------------------------------------------------------
     # 1) kNN for neighbor selection in GEOMETRY SPACE
