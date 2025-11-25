@@ -39,15 +39,14 @@ eggfm_diffmap:
   n_neighbors: 30
   n_comps: 30
   device: "cuda"
-  hvp_batch_size: 1024
+  hvp_batch_size: 1024      # still used as edge batch_size
+  energy_batch_size: 2048
   eps_mode: "median"
-  eps_trunc: "yes"
+  eps_value: 1.0
+  eps_trunc: "no"
   t: 1.0
 
-  hessian_mix_mode: "none"
-  hessian_beta: 0.2
-  hessian_clip_std: 2.0
-  hessian_use_neg: true
+  alpha_normal: 0.2
 
 
   # NEW: energy-based conformal metric hyperparams
