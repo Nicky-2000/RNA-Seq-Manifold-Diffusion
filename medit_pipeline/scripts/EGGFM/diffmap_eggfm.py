@@ -73,7 +73,7 @@ def build_eggfm_diffmap(
     use_pca = diff_cfg.get("use_pca", True)
     # Geometry space: used for kNN + Euclidean distances
     # Energy space: ALWAYS use the original HVG expression matrix which the energy model was trained on.
-    X_energy = ad_prep.X
+    X_energy = ad_prep.obsm["X_pca"]
     if sp_sparse.issparse(X_energy):
         X_energy = X_energy.toarray()
     X_energy = np.asarray(X_energy, dtype=np.float32)

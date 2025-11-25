@@ -35,7 +35,7 @@ def train_energy_model(
 
     # Dataset
     dataset = AnnDataExpressionDataset(ad_prep)
-    n_genes = dataset.X.shape[1]
+    n_genes = ad_prep.obsm["X_pca"]
 
     # Model
     hidden_dims = model_cfg.get("hidden_dims", (512, 512, 512, 512))
