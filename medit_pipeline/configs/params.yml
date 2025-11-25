@@ -31,7 +31,7 @@ eggfm_diffmap:
   hvp_batch_size: 1024      # now just edge_batch_size
   eps_mode: "median"
   eps_value: 1.0
-  eps_trunc: "yes"
+  eps_trunc: "no"
   t: 1.0
 
   # NEW: energy-based conformal metric hyperparams
