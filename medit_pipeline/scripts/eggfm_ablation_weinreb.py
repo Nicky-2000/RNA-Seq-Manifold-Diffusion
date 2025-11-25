@@ -1,124 +1,237 @@
-from typing import Dict, Any
-import torch
-from torch import optim
-from torch.utils.data import DataLoader
+from __future__ import annotations
+import argparse
+import copy
+from pathlib import Path
+from typing import Any, Dict, List
 
-from .energy_model import EnergyMLP
-from .AnnDataPyTorch import AnnDataExpressionDataset
+import numpy as np
+import scanpy as sc
+import yaml
+from sklearn.cluster import KMeans
+from sklearn.metrics import adjusted_rand_score
+import subprocess
+
+from EGGFM.eggfm import run_eggfm_dimred
 
 
-def train_energy_model(
-    ad_prep,  # output of prep(ad, params)
-    model_cfg: Dict[str, Any],
-    train_cfg: Dict[str, Any],
-) -> EnergyMLP:
-    """
-    Train an energy-based model on preprocessed AnnData using denoising score matching.
+def build_argparser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--params", required=True, help="configs/params.yml")
+    ap.add_argument(
+        "--ad",
+        required=True,
+        help="path to Weinreb .h5ad (already QC’d + HVG + PCA etc.)",
+    )
+    ap.add_argument(
+        "--out_txt",
+        default="out/eggfm_ablation_weinreb.txt",
+        help="Where to write ablation results",
+    )
+    ap.add_argument(
+        "--gcs_path",
+        default=None,
+        help="Optional GCS path (e.g. gs://bucket/dir/) to copy the txt file to",
+    )
+    return ap
 
-    model_cfg (from params['eggfm_model']), e.g.:
-        hidden_dims: [512, 512, 512, 512]
 
-    train_cfg (from params['eggfm_train']), e.g.:
-        batch_size: 2048
-        num_epochs: 50
-        lr: 1e-4
-        sigma: 0.1
-        device: "cuda"
+def compute_ari(
+    qc_ad: sc.AnnData,
+    emb_key: str,
+    label_key: str,
+    n_dims: int,
+) -> float:
+    """Compute ARI from an embedding in qc_ad.obsm[emb_key]."""
+    if emb_key not in qc_ad.obsm:
+        raise ValueError(f"Embedding {emb_key!r} not found in qc_ad.obsm")
 
-        # optional early stopping:
-        early_stop_patience: 0   # 0 => disable early stopping (default)
-        early_stop_min_delta: 0.0
-    """
+    X = qc_ad.obsm[emb_key]
+    if X.ndim != 2:
+        raise ValueError(f"Embedding {emb_key!r} must be 2D, got shape={X.shape}")
 
-    # Device
-    device = train_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+    if label_key not in qc_ad.obs:
+        raise ValueError(f"Label key {label_key!r} not found in qc_ad.obs")
 
-    # Dataset
-    dataset = AnnDataExpressionDataset(ad_prep)
-    n_genes = dataset.X.shape[1]
-
-    # Model
-    hidden_dims = model_cfg.get("hidden_dims", (512, 512, 512, 512))
-    model = EnergyMLP(
-        n_genes=n_genes,
-        hidden_dims=hidden_dims,
-    ).to(device)
-
-    # Training hyperparameters (YAML overrides defaults)
-    batch_size = int(train_cfg.get("batch_size", 2048))
-    num_epochs = int(train_cfg.get("num_epochs", 50))
-    lr = float(train_cfg.get("lr", 1e-4))
-    sigma = float(train_cfg.get("sigma", 0.1))
-
-    # Early stopping hyperparams
-    early_stop_patience = int(train_cfg.get("early_stop_patience", 0))  # 0 = off
-    early_stop_min_delta = float(train_cfg.get("early_stop_min_delta", 0.0))
-
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-
-    best_loss = float("inf")
-    best_state_dict = None
-    epochs_without_improve = 0
-
-    model.train()
-    for epoch in range(num_epochs):
-        running_loss = 0.0
-        for batch in loader:
-            x = batch.to(device)  # (B, D)
-            # Sample Gaussian noise
-            eps = torch.randn_like(x)
-            y = x + sigma * eps
-            y.requires_grad_(True)
-
-            # Predicted score at y: s_theta(y) = -∇_y E(y)
-            energy = model(y)  # (B,)
-            energy_sum = energy.sum()
-            (grad_y,) = torch.autograd.grad(
-                energy_sum,
-                y,
-                create_graph=False,
-                retain_graph=False,
-                only_inputs=True,
-            )
-            s_theta = -grad_y  # (B, D)
-
-            # DSM target: -(y - x) / sigma^2
-            target = -(y - x) / (sigma**2)
-
-            # MSE over batch and dimensions
-            loss = ((s_theta - target) ** 2).sum(dim=1).mean()
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item() * x.size(0)
-
-        epoch_loss = running_loss / len(dataset)
-        print(
-            f"[Energy DSM] Epoch {epoch+1}/{num_epochs}  loss={epoch_loss:.4f}",
-            flush=True,
+    labels = qc_ad.obs[label_key].to_numpy()
+    unique_labels = np.unique(labels)
+    if unique_labels.size < 2:
+        raise ValueError(
+            f"Need at least 2 unique labels for ARI; got {unique_labels.size}"
         )
 
-        # ---- early stopping bookkeeping ----
-        if epoch_loss + early_stop_min_delta < best_loss:
-            best_loss = epoch_loss
-            best_state_dict = model.state_dict()
-            epochs_without_improve = 0
-        else:
-            epochs_without_improve += 1
+    n_clusters = unique_labels.size
+    k_eff = min(n_dims, X.shape[1])
+    km = KMeans(n_clusters=n_clusters, n_init=10, random_state=0)
+    km.fit(X[:, :k_eff])
+    ari = adjusted_rand_score(labels, km.labels_)
+    return float(ari)
 
-        if early_stop_patience > 0 and epochs_without_improve >= early_stop_patience:
+
+def main() -> None:
+    print("[weinreb_ablation] starting", flush=True)
+    args = build_argparser().parse_args()
+    print("[weinreb_ablation] parsed args", flush=True)
+
+    params: Dict[str, Any] = yaml.safe_load(Path(args.params).read_text())
+    print("[weinreb_ablation] loaded params", flush=True)
+
+    # ---- load Weinreb data ----
+    print("[weinreb_ablation] reading AnnData...", flush=True)
+    qc_ad = sc.read_h5ad(args.ad)
+    dataset_name = Path(args.ad).stem
+    print(f"[weinreb_ablation] AnnData loaded for dataset={dataset_name}", flush=True)
+    print(f"[weinreb_ablation] qc_ad shape={qc_ad.shape}", flush=True)
+
+    spec = params.get("spec", {})
+    label_key = spec.get("ari_label_key", None)
+    if label_key is None:
+        raise ValueError("spec.ari_label_key must be set in params.yml")
+    ari_n_dims = int(spec.get("ari_n_dims", spec.get("n_pcs", 10)))
+    n_pcs = int(spec.get("n_pcs", 10))
+
+    out_txt_path = Path(args.out_txt)
+    out_txt_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # ---- define LIGHT ablation grid ----
+    hidden_dims_grid: List[List[int]] = [
+        [512, 512],
+        [512, 512, 512],
+    ]
+    sigma_grid = [0.05, 0.1]
+    metric_lambda_grid = [2.0, 4.0]
+    eps_trunc_grid = ["no", "upper"]  # "no" = no trunc, "upper" = 0.99 cap on l2
+    t_grid = [1.0, 2.0]
+    n_neighbors_grid = [15, 30]
+
+    # keep metric_gamma and num_epochs, batch_size from base params
+    base_metric_gamma = params.get("eggfm_diffmap", {}).get("metric_gamma", 0.2)
+    base_num_epochs = params.get("eggfm_train", {}).get("num_epochs", 50)
+    base_batch_size = params.get("eggfm_train", {}).get("batch_size", 2048)
+
+    # ---- write header ----
+    if not out_txt_path.exists():
+        with out_txt_path.open("w") as f:
+            f.write(
+                "dataset\thidden_dims\tsigma\tmetric_gamma\tmetric_lambda\t"
+                "eps_trunc\tt\tn_neighbors\tnum_epochs\tbatch_size\t"
+                "ari_diffmap_eggfm\tari_diffmap_eggfm_x2\n"
+            )
+
+    combo_idx = 0
+
+    for hd in hidden_dims_grid:
+        for sigma in sigma_grid:
+            for lam in metric_lambda_grid:
+                for eps_trunc in eps_trunc_grid:
+                    for t_val in t_grid:
+                        for k_neighbors in n_neighbors_grid:
+                            combo_idx += 1
+                            print(
+                                f"[weinreb_ablation] === combo {combo_idx}: "
+                                f"hidden_dims={hd}, sigma={sigma}, "
+                                f"metric_lambda={lam}, eps_trunc={eps_trunc}, "
+                                f"t={t_val}, n_neighbors={k_neighbors} ===",
+                                flush=True,
+                            )
+
+                            cfg = copy.deepcopy(params)
+                            cfg.setdefault("eggfm_model", {})
+                            cfg.setdefault("eggfm_train", {})
+                            cfg.setdefault("eggfm_diffmap", {})
+
+                            # model / training
+                            cfg["eggfm_model"]["hidden_dims"] = hd
+                            cfg["eggfm_train"]["sigma"] = float(sigma)
+                            cfg["eggfm_train"]["num_epochs"] = int(base_num_epochs)
+                            cfg["eggfm_train"]["batch_size"] = int(base_batch_size)
+
+                            # diffusion metric
+                            cfg["eggfm_diffmap"]["metric_gamma"] = float(
+                                base_metric_gamma
+                            )
+                            cfg["eggfm_diffmap"]["metric_lambda"] = float(lam)
+                            cfg["eggfm_diffmap"]["eps_trunc"] = str(eps_trunc)
+                            cfg["eggfm_diffmap"]["t"] = float(t_val)
+                            cfg["eggfm_diffmap"]["n_neighbors"] = int(k_neighbors)
+
+                            # copy qc_ad so we don't accumulate obsm keys across combos
+                            qc_run = qc_ad.copy()
+
+                            # ---- 1) Run EGGFM + pure EGGFM Diffmap ----
+                            qc_run, _ = run_eggfm_dimred(qc_run, cfg)
+                            # qc_run.obsm["X_eggfm"] should now be pure EGGFM DM with these hyperparams.
+
+                            # ---- 2) Double diffusion on top of X_eggfm ----
+                            sc.pp.neighbors(
+                                qc_run,
+                                n_neighbors=k_neighbors,
+                                use_rep="X_eggfm",
+                            )
+                            sc.tl.diffmap(qc_run, n_comps=n_pcs)
+                            qc_run.obsm["X_diff_eggfm_x2"] = qc_run.obsm["X_diffmap"][
+                                :, :n_pcs
+                            ]
+
+                            # ---- 3) Compute ARIs ----
+                            try:
+                                ari_eggfm = compute_ari(
+                                    qc_run, "X_eggfm", label_key, ari_n_dims
+                                )
+                            except Exception as e:
+                                print(
+                                    f"[weinreb_ablation] ARI failed for X_eggfm: {e}",
+                                    flush=True,
+                                )
+                                ari_eggfm = float("nan")
+
+                            try:
+                                ari_eggfm_x2 = compute_ari(
+                                    qc_run,
+                                    "X_diff_eggfm_x2",
+                                    label_key,
+                                    ari_n_dims,
+                                )
+                            except Exception as e:
+                                print(
+                                    f"[weinreb_ablation] ARI failed for X_diff_eggfm_x2: {e}",
+                                    flush=True,
+                                )
+                                ari_eggfm_x2 = float("nan")
+
+                            print(
+                                f"[weinreb_ablation] combo {combo_idx} ARIs: "
+                                f"eggfm={ari_eggfm:.4f}, "
+                                f"eggfm_x2={ari_eggfm_x2:.4f}",
+                                flush=True,
+                            )
+
+                            # ---- 4) Append to txt file ----
+                            with out_txt_path.open("a") as f:
+                                f.write(
+                                    f"{dataset_name}\t{hd}\t{sigma}\t{base_metric_gamma}\t{lam}\t"
+                                    f"{eps_trunc}\t{t_val}\t{k_neighbors}\t{base_num_epochs}\t{base_batch_size}\t"
+                                    f"{ari_eggfm:.6f}\t{ari_eggfm_x2:.6f}\n"
+                                )
+
+    print(f"[weinreb_ablation] done, results at {out_txt_path}", flush=True)
+
+    # ---- Optional: copy to GCS ----
+    if args.gcs_path:
+        print(
+            f"[weinreb_ablation] copying {out_txt_path} to {args.gcs_path} via gsutil cp",
+            flush=True,
+        )
+        try:
+            subprocess.run(
+                ["gsutil", "cp", str(out_txt_path), args.gcs_path],
+                check=False,
+            )
+        except Exception as e:
             print(
-                f"[Energy DSM] Early stopping at epoch {epoch+1} "
-                f"(best_loss={best_loss:.4f})",
+                f"[weinreb_ablation] gsutil cp failed: {e}",
                 flush=True,
             )
-            break
 
-    # Restore best weights if we tracked them
-    if best_state_dict is not None:
-        model.load_state_dict(best_state_dict)
 
-    return model
+if __name__ == "__main__":
+    main()
