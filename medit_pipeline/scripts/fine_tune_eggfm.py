@@ -10,7 +10,7 @@ from EGGFM.prep import prep_for_manifolds
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("--params", required=True, help="configs/params.yml")
-    ap.add_argument("--ad", required=True, help="path to unperturbed .h5ad")
+    ap.add_argument("--ad", default=None, help="path to unperturbed .h5ad")
     return ap
 
 
