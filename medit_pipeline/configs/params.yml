@@ -16,13 +16,16 @@ qc:
 eggfm_model:
   hidden_dims: [256, 256]   # smaller net for paul15
 
-# Energy model training hyperparams
 eggfm_train:
-  batch_size: 256           # smaller batch for small dataset
-  num_epochs: 50
+  batch_size: 2048
+  num_epochs: 50      # still the hard cap
   lr: 1e-3
-  sigma: 0.1
+  sigma: 0.05
   device: "cuda"
+
+  early_stop_patience: 5        # e.g., stop if 5 epochs with no improvement
+  early_stop_min_delta: 0.0     # or 1e-3 if you want a margin
+
 
 eggfm_diffmap:
   n_neighbors: 30
