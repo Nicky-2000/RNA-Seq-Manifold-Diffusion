@@ -133,13 +133,13 @@ def build_eggfm_diffmap(
                 "[EGGFM DiffMap] non-finite values in G after exp; "
                 "check energy normalization / clipping."
             )
-    print(
-        "[EGGFM DiffMap] energy stats: "
-        f"raw_min={E_vals.min():.4f}, raw_max={E_vals.max():.4f}, "
-        f"norm_min={E_norm.min():.4f}, norm_max={E_norm.max():.4f}, "
-        f"clip=[{-max_abs:.1f}, {max_abs:.1f}]",
-        flush=True,
-    )
+        print(
+            "[EGGFM DiffMap] energy stats: "
+            f"raw_min={E_vals.min():.4f}, raw_max={E_vals.max():.4f}, "
+            f"norm_min={E_norm.min():.4f}, norm_max={E_norm.max():.4f}, "
+            f"clip=[{-max_abs:.1f}, {max_abs:.1f}]",
+            flush=True,
+        )
 
     print(
         "[EGGFM DiffMap] metric G stats: "
