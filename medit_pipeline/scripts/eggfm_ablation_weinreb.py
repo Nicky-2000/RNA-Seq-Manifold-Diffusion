@@ -120,7 +120,7 @@ def main() -> None:
     base_t = float(base_diff.get("t", 1.0))
     base_clip_low = base_diff.get("energy_clip_low", 0.05)
     base_clip_high = base_diff.get("energy_clip_high", 0.95)
-    base_clip_mode = base_diff.get("clip_mode", "baseline")  # optional flag
+    base_clip_mode = base_diff.get("clip_mode", "legacy")  # optional flag
 
     # ---- define single-parameter ablation ranges around baseline ----
     metric_lambda_values = [2.0, 8.0]  # around baseline 4.0

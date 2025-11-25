@@ -65,6 +65,7 @@ eggfm_diffmap:
   eps_mode: "median"
   eps_value: 1.0
   eps_trunc: "no"
+  clip_mode: "legacy"
   t: 1.0
 
   # NEW: energy-based conformal metric hyperparams
