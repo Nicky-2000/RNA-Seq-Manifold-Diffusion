@@ -5,6 +5,7 @@ import scanpy as sc
 import argparse
 import yaml
 from EGGFM.eggfm import run_eggfm_dimred
+from .prep import prep_for_manifolds
 
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
@@ -20,7 +21,11 @@ def main() -> None:
     params: Dict[str, Any] = yaml.safe_load(Path(args.params).read_text())
     print("[main] loaded params", flush=True)
     print("[main] reading AnnData...", flush=True)
-    qc_ad = sc.read_h5ad(args.ad)
+    if args.ad:
+        qc_ad = sc.read_h5ad(args.ad)
+    else:
+        ad = sc.datasets.paul15()
+        qc_ad = prep_for_manifolds(ad)
     print("[main] AnnData loaded, computing neighbor_overlap...", flush=True)
     qc_ad, _ = run_eggfm_dimred(qc_ad, params)
     qc_ad.write_h5ad(args.ad)
