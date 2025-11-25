@@ -13,13 +13,13 @@ qc:
   max_pct_mt: 15
 
 eggfm_diffmap:
-  n_neighbors: 10
+  n_neighbors: 30
   n_comps: 30
   device: "cuda"
   hvp_batch_size: 1024      # now just edge_batch_size
   eps_mode: "median"
   eps_value: 1.0
-  eps_trunc: "no"
+  eps_trunc: "yes"
   t: 1.0
 
   # NEW: energy-based conformal metric hyperparams
