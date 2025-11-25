@@ -104,15 +104,35 @@ def build_eggfm_diffmap(
             E_list.append(Eb.detach().cpu().numpy())
         E_vals = np.concatenate(E_list, axis=0).astype(np.float64)
 
-    # Robust center & scale energies
-    med = np.median(E_vals)
-    mad = np.median(np.abs(E_vals - med)) + 1e-8  # robust scale
-    E_norm = (E_vals - med) / mad
+    clip_mode = diff_cfg.get("clip_mode", "baseline")
 
-    # Clip normalized energies to a small range, e.g. [-3, 3]
-    max_abs = float(diff_cfg.get("energy_clip_abs", 3.0))
-    E_clip = np.clip(E_norm, -max_abs, max_abs)
+    if clip_mode == "legacy":
+        # Clip energies to avoid extreme tails
+        q_low = np.quantile(E_vals, energy_clip_low)
+        q_hi = np.quantile(E_vals, energy_clip_high)
+        E_clip = np.clip(E_vals, q_low, q_hi)
+        # Scalar conformal metric field
+        G = metric_gamma + metric_lambda * np.exp(E_clip)  # shape (n_cells,)
 
+    elif clip_mode == "current":
+        # Robust center & scale energies
+        med = np.median(E_vals)
+        mad = np.median(np.abs(E_vals - med)) + 1e-8  # robust scale
+        E_norm = (E_vals - med) / mad
+
+        # Clip normalized energies to a small range, e.g. [-3, 3]
+        max_abs = float(diff_cfg.get("energy_clip_abs", 3.0))
+        E_clip = np.clip(E_norm, -max_abs, max_abs)
+
+        # Scalar conformal metric field
+        G = metric_gamma + metric_lambda * np.exp(
+            E_clip
+        )  # E_clip ∈ [-3,3] → exp ∈ [~0.05, ~20]
+        if not np.isfinite(G).all():
+            raise ValueError(
+                "[EGGFM DiffMap] non-finite values in G after exp; "
+                "check energy normalization / clipping."
+            )
     print(
         "[EGGFM DiffMap] energy stats: "
         f"raw_min={E_vals.min():.4f}, raw_max={E_vals.max():.4f}, "
@@ -120,17 +140,6 @@ def build_eggfm_diffmap(
         f"clip=[{-max_abs:.1f}, {max_abs:.1f}]",
         flush=True,
     )
-
-    # Scalar conformal metric field
-    G = metric_gamma + metric_lambda * np.exp(
-        E_clip
-    )  # E_clip ∈ [-3,3] → exp ∈ [~0.05, ~20]
-
-    if not np.isfinite(G).all():
-        raise ValueError(
-            "[EGGFM DiffMap] non-finite values in G after exp; "
-            "check energy normalization / clipping."
-        )
 
     print(
         "[EGGFM DiffMap] metric G stats: "
