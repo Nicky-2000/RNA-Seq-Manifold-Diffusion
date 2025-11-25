@@ -226,11 +226,8 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     qc_ad = sc.read_h5ad(args.ad)
-    d_plot, pca_plot, ari_plot = dim_red(qc_ad, params, out_dir)
+    dim_red(qc_ad, params, out_dir)
     qc_ad.write_h5ad(args.ad)
-    #  Upload if requested
-    if args.report_to_gcs:
-        _try_gsutil_cp([ari_plot, d_plot, pca_plot], args.report_to_gcs)
 
 
 if __name__ == "__main__":
