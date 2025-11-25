@@ -189,12 +189,11 @@ def build_eggfm_diffmap(
             )
 
     # Optional: clip extreme metric values (robust quantiles)
-    if diff_cfg.get("eps_trunc") == "yes":
-        q_low = np.quantile(l2_vals, 0.05)
-        q_hi = np.quantile(l2_vals, 0.98)
-        l2_vals = np.clip(l2_vals, q_low, q_hi)
+    if diff_cfg.get("eps_trunc") == "upper":
+        q_hi = np.quantile(l2_vals, 0.99)
+        l2_vals = np.minimum(l2_vals, q_hi)
         print(
-            f"[EGGFM DiffMap] eps_trunc=yes, clipped l2_vals to [{q_low:.4g}, {q_hi:.4g}]",
+            f"[EGGFM DiffMap] eps_trunc=upper, clipped l2_vals to <= {q_hi:.4g}",
             flush=True,
         )
 
