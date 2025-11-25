@@ -50,8 +50,8 @@ def main():
         # X_diff_eggfm = qc.obsm["X_diffmap"][:, :k]
         # qc.obsm["X_diff_eggfm"] = X_diff_eggfm
 
-        scores_pca.append(compute_ari(X_pca_dm, labels, k))
-        scores_eggfm.append(compute_ari(X_eggfm, labels, k))
+        # scores_pca.append(compute_ari(X_pca_dm, labels, k))
+        # scores_eggfm.append(compute_ari(X_eggfm, labels, k))
 
     print("\n=== Variance results ===")
     print(f"PCA→DM:   mean={np.mean(scores_pca):.4f}, std={np.std(scores_pca):.4f}")
