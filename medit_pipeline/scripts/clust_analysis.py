@@ -409,16 +409,16 @@ def main() -> None:
     )
 
     embeddings = {
-        # "diffmap_eggfm": qc_ad.obsm["X_eggfm"],
-        # "diffmap_eggfm_x2": qc_ad.obsm["X_diff_eggfm"],
-        # "diffmap_pca": qc_ad.obsm["X_diff_pca"],
+        "diffmap_eggfm": qc_ad.obsm["X_eggfm"],
+        "diffmap_eggfm_x2": qc_ad.obsm["X_diff_eggfm"],
+        "diffmap_pca": qc_ad.obsm["X_diff_pca"],
         "diffmap_pca_x2": qc_ad.obsm["X_diff_pca_x2"],
     }
 
-    ari_path = ari_plot(qc_ad, spec, out_dir, embeddings)
+    # ari_path = ari_plot(qc_ad, spec, out_dir, embeddings)
 
     gcs_paths += umap_paths
-    gcs_paths.append(ari_path)
+    # gcs_paths.append(ari_path)
     # if args.ari_stab:
     # ov = neighbor_overlap(X_dp, X_de, k=30)
     # ari_stab_path = ari_stability(qc_ad, spec, out_dir)

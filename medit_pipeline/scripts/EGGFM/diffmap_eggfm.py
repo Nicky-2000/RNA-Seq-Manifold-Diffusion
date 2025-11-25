@@ -147,7 +147,7 @@ def build_eggfm_diffmap(
     print(f"[EGGFM DiffMap] total edges (directed): {n_edges}", flush=True)
 
     # ------------------------------------------------------------
-    # 3) Compute conformal energy-based edge lengths ℓ_ij^2
+    # 2) Compute conformal energy-based edge lengths ℓ_ij^2
     #    using geometry space for distances and G from energy space
     # ------------------------------------------------------------
     l2_vals = np.empty(n_edges, dtype=np.float64)
@@ -199,7 +199,7 @@ def build_eggfm_diffmap(
         )
 
     # ------------------------------------------------------------
-    # 4) Choose kernel bandwidth ε
+    # 3) Choose kernel bandwidth ε
     # ------------------------------------------------------------
     if eps_mode == "median":
         eps = np.median(l2_vals)
@@ -209,18 +209,18 @@ def build_eggfm_diffmap(
         raise ValueError(f"Unknown eps_mode: {eps_mode}")
     print(f"[EGGFM DiffMap] using eps = {eps:.4g}", flush=True)
 
-    # 5) Build kernel W_ij = exp(-ℓ_ij^2 / eps)
+    # 4) Build kernel W_ij = exp(-ℓ_ij^2 / eps)
     W_vals = np.exp(-l2_vals / eps)
     W = sparse.csr_matrix((W_vals, (rows, cols)), shape=(n_cells, n_cells))
     W = 0.5 * (W + W.T)
 
-    # 6) Normalize to Markov matrix P (row-stochastic)
+    # 5) Normalize to Markov matrix P (row-stochastic)
     d = np.array(W.sum(axis=1)).ravel()
     d_safe = np.maximum(d, 1e-12)
     D_inv = sparse.diags(1.0 / d_safe)
     P = D_inv @ W
 
-    # 7) Eigendecompose P^T for diffusion map
+    # 6) Eigendecompose P^T for diffusion map
     k_eigs = n_comps + 1  # include trivial eigenpair
     print("[EGGFM DiffMap] computing eigenvectors...", flush=True)
     eigvals, eigvecs = eigs(P.T, k=k_eigs, which="LR")
