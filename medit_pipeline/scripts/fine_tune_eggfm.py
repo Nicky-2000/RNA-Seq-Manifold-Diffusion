@@ -5,7 +5,7 @@ import scanpy as sc
 import argparse
 import yaml
 from EGGFM.eggfm import run_eggfm_dimred
-from .prep import prep_for_manifolds
+from EGGFM.prep import prep_for_manifolds
 
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
