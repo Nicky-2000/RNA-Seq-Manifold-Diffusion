@@ -376,10 +376,10 @@ def main() -> None:
     # Nothing, X_eggfm is already a Diffmap
 
     # EGGFM → Diffmap → Diffmap
-    sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_eggfm")
-    sc.tl.diffmap(qc_ad, n_comps=n_pcs)
-    X_diff_dcol = qc_ad.obsm["X_diffmap"][:, :n_pcs]
-    qc_ad.obsm["X_diff_eggfm"] = X_diff_dcol
+    # sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_eggfm")
+    # sc.tl.diffmap(qc_ad, n_comps=n_pcs)
+    # X_diff_dcol = qc_ad.obsm["X_diffmap"][:, :n_pcs]
+    # qc_ad.obsm["X_diff_eggfm"] = X_diff_dcol
 
     # PCA → Diffmap
     sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_pca")
@@ -401,17 +401,17 @@ def main() -> None:
         spec["ari_label_key"],
         out_dir,
         {
-            "X_eggfm": "Diffmap (EGGFM)",
-            "X_diff_eggfm": "Diffmap (EGGFMx2)",
-            "X_diff_pca": "Diffmap (PCA)",
-            "X_diff_pca_double": "Diffmap (PCAx2)",
+            # "X_eggfm": "Diffmap (EGGFM)",
+            # "X_diff_eggfm": "Diffmap (EGGFMx2)",
+            # "X_diff_pca": "Diffmap (PCA)",
+            "X_diff_pca_x2": "Diffmap (PCAx2)",
         },
     )
 
     embeddings = {
-        "diffmap_eggfm": qc_ad.obsm["X_eggfm"],
-        "diffmap_eggfm_x2": qc_ad.obsm["X_diff_eggfm"],
-        "diffmap_pca": qc_ad.obsm["X_diff_pca"],
+        # "diffmap_eggfm": qc_ad.obsm["X_eggfm"],
+        # "diffmap_eggfm_x2": qc_ad.obsm["X_diff_eggfm"],
+        # "diffmap_pca": qc_ad.obsm["X_diff_pca"],
         "diffmap_pca_x2": qc_ad.obsm["X_diff_pca_x2"],
     }
 
