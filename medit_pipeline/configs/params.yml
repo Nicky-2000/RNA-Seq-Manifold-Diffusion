@@ -4,7 +4,7 @@ hvg_n_top_genes: 2000
 spec:
   n_pcs: 20
   dcol_max_cells: 3000
-  ari_label_key: "paul15_clusters"      # <-- this must match an obs column name
+  ari_label_key: "Cell type annotation"        # <-- this must match an obs column name      # <-- this must match an obs column name
   ari_n_dims: 10              # how many dims to use for ARI per embedding
 
 qc:
