@@ -104,7 +104,7 @@ def build_eggfm_diffmap(
             E_list.append(Eb.detach().cpu().numpy())
         E_vals = np.concatenate(E_list, axis=0).astype(np.float64)
 
-    clip_mode = diff_cfg.get("clip_mode", "baseline")
+    clip_mode = diff_cfg.get("clip_mode", "current")
 
     if clip_mode == "legacy":
         # Clip energies to avoid extreme tails
