@@ -22,8 +22,8 @@ def main():
     # your hvg+norm pipeline
     from EGGFM.prep import prep_for_manifolds
 
-    base = prep_for_manifolds(ad, hvg_n_top_genes=2000)
-
+    # base = prep_for_manifolds(ad, hvg_n_top_genes=2000)
+    base = ad
     labels = base.obs[spec["ari_label_key"]].to_numpy()
 
     scores_eggfm = []
