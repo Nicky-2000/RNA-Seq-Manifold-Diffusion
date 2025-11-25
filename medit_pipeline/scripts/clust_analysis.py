@@ -391,7 +391,7 @@ def main() -> None:
     sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_diff_pca")
     sc.tl.diffmap(qc_ad, n_comps=n_pcs)
     X_diff_pca_double = qc_ad.obsm["X_diffmap"][:, :n_pcs]
-    qc_ad.obsm["X_diff_pca_double"] = X_diff_pca_double
+    qc_ad.obsm["X_diff_pca_x2"] = X_diff_pca_double
 
     qc_ad.write_h5ad(args.ad)
     gcs_paths = []
