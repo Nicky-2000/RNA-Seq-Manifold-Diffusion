@@ -98,10 +98,6 @@ def build_eggfm_diffmap(
     edge_batch_size = diff_cfg.get("hvp_batch_size", 1024)
     t = diff_cfg.get("t", 1.0)
 
-    metric_gamma = float(diff_cfg.get("metric_gamma", 0.2))
-    metric_lambda = float(diff_cfg.get("metric_lambda", 4.0))
-    energy_batch_size = int(diff_cfg.get("energy_batch_size", 2048))
-
     # Move model to device once
     energy_model = energy_model.to(device)
     energy_model.eval()
@@ -109,48 +105,6 @@ def build_eggfm_diffmap(
     print(
         f"[EGGFM DiffMap] geometry X shape: {X_energy.shape}, "
         f"energy X shape: {X_energy.shape}",
-        flush=True,
-    )
-
-    # ------------------------------------------------------------
-    # 0) Precompute energy E(x) and scalar metric G(x) in ENERGY SPACE
-    # ------------------------------------------------------------
-    print("[EGGFM DiffMap] computing energies E(x) for all cells...", flush=True)
-    with torch.no_grad():
-        X_energy_tensor = torch.from_numpy(X_energy).to(
-            device=device, dtype=torch.float32
-        )
-        E_list = []
-        for start in range(0, n_cells, energy_batch_size):
-            end = min(start + energy_batch_size, n_cells)
-            xb = X_energy_tensor[start:end]  # (B, D_energy)
-            Eb = energy_model(xb)  # (B,)
-            E_list.append(Eb.detach().cpu().numpy())
-        E_vals = np.concatenate(E_list, axis=0).astype(np.float64)
-
-    # Robust center & scale energies
-    med = np.median(E_vals)
-    mad = np.median(np.abs(E_vals - med)) + 1e-8  # robust scale
-    E_norm = (E_vals - med) / mad
-
-    # Clip normalized energies to a small range, e.g. [-3, 3]
-    max_abs = float(diff_cfg.get("energy_clip_abs", 3.0))
-    E_clip = np.clip(E_norm, -max_abs, max_abs)
-
-    # Scalar conformal metric field
-    G = metric_gamma + metric_lambda * np.exp(
-        E_clip
-    )  # E_clip ∈ [-3,3] → exp ∈ [~0.05, ~20]
-    if not np.isfinite(G).all():
-        raise ValueError(
-            "[EGGFM DiffMap] non-finite values in G after exp; "
-            "check energy normalization / clipping."
-        )
-    print(
-        "[EGGFM DiffMap] energy stats: "
-        f"raw_min={E_vals.min():.4f}, raw_max={E_vals.max():.4f}, "
-        f"norm_min={E_norm.min():.4f}, norm_max={E_norm.max():.4f}, "
-        f"clip=[{-max_abs:.1f}, {max_abs:.1f}]",
         flush=True,
     )
 

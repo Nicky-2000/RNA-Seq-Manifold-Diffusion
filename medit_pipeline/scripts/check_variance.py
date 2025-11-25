@@ -35,7 +35,7 @@ def main():
         qc, _ = run_eggfm_dimred(qc, params)
 
         # PCA→DM
-        sc.pp.neighbors(qc, n_neighbors=30, use_rep="X_pca")
+        sc.pp.neighbors(qc, n_neighbors=15, use_rep="X_pca")
         sc.tl.diffmap(qc, n_comps=k)
         X_pca_dm = qc.obsm["X_diffmap"][:, :k]
 
@@ -45,7 +45,7 @@ def main():
         # scores_pca.append(compute_ari(X_pca_dm, labels, k))
         # scores_eggfm.append(compute_ari(X_eggfm, labels, k))
 
-        sc.pp.neighbors(qc, n_neighbors=30, use_rep="X_eggfm")
+        sc.pp.neighbors(qc, n_neighbors=15, use_rep="X_eggfm")
         sc.tl.diffmap(qc, n_comps=k)
         X_diff_eggfm = qc.obsm["X_diffmap"][:, :k]
         qc.obsm["X_diff_eggfm"] = X_diff_eggfm
