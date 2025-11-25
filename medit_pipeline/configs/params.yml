@@ -25,7 +25,7 @@ eggfm_train:
   sigma: 0.1
   early_stop_patience: 5
   early_stop_min_delta: 1e-4
-  latent_space: PCA
+  latent_space: HVG
 
 
 eggfm_diffmap:
@@ -36,6 +36,8 @@ eggfm_diffmap:
   eps_mode: "median"
   eps_trunc: "no"
   t: 1.0
+  latent_space: HVG
+
 
   hessian_mix_mode: "multiplicative"
   hessian_beta: 0.2
@@ -44,7 +46,7 @@ eggfm_diffmap:
 
 
 # NEW: energy-based conformal metric hyperparams
-metric_lambda: 4.0        # how strongly energy rescales distances
+metric_lambda: 0.0        # how strongly energy rescales distances
 energy_clip_low: 0.05     # quantile for lower energy clipping
 energy_clip_high: 0.95    # quantile for upper energy clipping
 energy_batch_size: 2048   # batch size for E(x) computation

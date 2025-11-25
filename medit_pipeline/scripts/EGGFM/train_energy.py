@@ -35,7 +35,7 @@ def train_energy_model(
     device = train_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     if train_cfg.get("latent_space") == "HVG":
         # Dataset
-        dataset = AnnDataExpressionDataset(ad_prep)
+        dataset = AnnDataExpressionDataset(ad_prep.X)
     else:
         sc.pp.pca(ad_prep, n_comps=50)
         dataset = AnnDataExpressionDataset(ad_prep.obsm["X_pca"])
