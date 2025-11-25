@@ -157,6 +157,9 @@ def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="QC + EDA for unperturbed cells.")
     ap.add_argument("--params", required=True, help="configs/params.yml")
     ap.add_argument("--out", required=True, help="out/interim")
+    ap.add_argument("--pca", required=True, help="path to unperturbed .h5ad")
+    ap.add_argument("--ari", required=True, help="path to unperturbed .h5ad")
+    ap.add_argument("--umap", required=True, help="path to unperturbed .h5ad")
     ap.add_argument("--ad", required=True, help="path to unperturbed .h5ad")
     ap.add_argument(
         "--ari-stab", action="store_true", help="emit qc_summary, plots, manifest"
@@ -376,54 +379,67 @@ def main() -> None:
     # Nothing, X_eggfm is already a Diffmap
 
     # EGGFM → Diffmap → Diffmap
-    # sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_eggfm")
-    # sc.tl.diffmap(qc_ad, n_comps=n_pcs)
-    # X_diff_dcol = qc_ad.obsm["X_diffmap"][:, :n_pcs]
-    # qc_ad.obsm["X_diff_eggfm"] = X_diff_dcol
-
-    # PCA → Diffmap
-    sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_pca")
+    sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_eggfm")
     sc.tl.diffmap(qc_ad, n_comps=n_pcs)
-    X_diff_pca = qc_ad.obsm["X_diffmap"][:, :n_pcs]
-    qc_ad.obsm["X_diff_pca"] = X_diff_pca
+    X_diff_eggfm = qc_ad.obsm["X_diffmap"][:, :n_pcs]
+    qc_ad.obsm["X_diff_eggfm"] = X_diff_eggfm
 
-    # PCA → Diffmap → Diffmap
-    sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_diff_pca")
-    sc.tl.diffmap(qc_ad, n_comps=n_pcs)
-    X_diff_pca_double = qc_ad.obsm["X_diffmap"][:, :n_pcs]
-    qc_ad.obsm["X_diff_pca_x2"] = X_diff_pca_double
+    if args.pca:
+        # PCA → Diffmap
+        sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_pca")
+        sc.tl.diffmap(qc_ad, n_comps=n_pcs)
+        X_diff_pca = qc_ad.obsm["X_diffmap"][:, :n_pcs]
+        qc_ad.obsm["X_diff_pca"] = X_diff_pca
+
+        # PCA → Diffmap → Diffmap
+        sc.pp.neighbors(qc_ad, n_neighbors=30, use_rep="X_diff_pca")
+        sc.tl.diffmap(qc_ad, n_comps=n_pcs)
+        X_diff_pca_double = qc_ad.obsm["X_diffmap"][:, :n_pcs]
+        qc_ad.obsm["X_diff_pca_x2"] = X_diff_pca_double
 
     qc_ad.write_h5ad(args.ad)
     gcs_paths = []
 
-    umap_paths = plot_umaps(
-        qc_ad,
-        spec["ari_label_key"],
-        out_dir,
-        {
-            # "X_eggfm": "Diffmap (EGGFM)",
-            # "X_diff_eggfm": "Diffmap (EGGFMx2)",
-            # "X_diff_pca": "Diffmap (PCA)",
-            "X_diff_pca_x2": "Diffmap (PCAx2)",
-        },
-    )
+    if args.umap:
+        if args.pca:
+            umap_paths = plot_umaps(
+                qc_ad,
+                spec["ari_label_key"],
+                out_dir,
+                {
+                    "X_eggfm": "Diffmap (EGGFM)",
+                    "X_diff_eggfm": "Diffmap (EGGFMx2)",
+                    "X_diff_pca": "Diffmap (PCA)",
+                    "X_diff_pca_x2": "Diffmap (PCAx2)",
+                },
+            )
+        else:
+            umap_paths = plot_umaps(
+                qc_ad,
+                spec["ari_label_key"],
+                out_dir,
+                {
+                    "X_eggfm": "Diffmap (EGGFM)",
+                    "X_diff_eggfm": "Diffmap (EGGFMx2)",
+                },
+            )
+        gcs_paths += umap_paths
 
-    embeddings = {
-        "diffmap_eggfm": qc_ad.obsm["X_eggfm"],
-        "diffmap_eggfm_x2": qc_ad.obsm["X_diff_eggfm"],
-        "diffmap_pca": qc_ad.obsm["X_diff_pca"],
-        "diffmap_pca_x2": qc_ad.obsm["X_diff_pca_x2"],
-    }
+    if args.ari:
+        embeddings = {
+            "diffmap_eggfm": qc_ad.obsm["X_eggfm"],
+            "diffmap_eggfm_x2": qc_ad.obsm["X_diff_eggfm"],
+            "diffmap_pca": qc_ad.obsm["X_diff_pca"],
+            "diffmap_pca_x2": qc_ad.obsm["X_diff_pca_x2"],
+        }
+        ari_path = ari_plot(qc_ad, spec, out_dir, embeddings)
+        gcs_paths.append(ari_path)
 
-    # ari_path = ari_plot(qc_ad, spec, out_dir, embeddings)
-
-    gcs_paths += umap_paths
-    # gcs_paths.append(ari_path)
-    # if args.ari_stab:
-    # ov = neighbor_overlap(X_dp, X_de, k=30)
-    # ari_stab_path = ari_stability(qc_ad, spec, out_dir)
-    # gcs_paths.append(ari_stab_path)
-    # print("Mean neighbor overlap (Diffmap PCA vs EGGFM):", ov)
+    if args.ari_stab:
+        ov = neighbor_overlap(X_diff_pca, X_diff_eggfm, k=30)
+        ari_stab_path = ari_stability(qc_ad, spec, out_dir)
+        gcs_paths.append(ari_stab_path)
+        print("Mean neighbor overlap (Diffmap PCA vs EGGFM):", ov)
 
     #  Upload if requested
     if args.report_to_gcs:
