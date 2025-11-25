@@ -18,7 +18,6 @@ def main():
     spec = params["spec"]
     k = spec.get("ari_n_dims", spec.get("n_pcs", 10))
 
-    # fixed dataset
     ad = sc.datasets.paul15()
     # your hvg+norm pipeline
     from EGGFM.prep import prep_for_manifolds
