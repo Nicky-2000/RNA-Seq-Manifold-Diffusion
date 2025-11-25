@@ -208,6 +208,14 @@ def build_eggfm_diffmap(
         raise ValueError(f"Unknown eps_mode: {eps_mode}")
     print(f"[EGGFM DiffMap] using eps = {eps:.4g}", flush=True)
 
+    # ------------------------------------------------------------
+    # 3.5) Clip
+    # ------------------------------------------------------------
+    if diff_cfg.get("eps_trunc") == "yes":
+        q_low = np.quantile(l2_vals, 0.05)
+        q_hi = np.quantile(l2_vals, 0.98)
+        l2_vals = np.clip(l2_vals, q_low, q_hi)
+
     # 4) Build kernel W_ij = exp(-ℓ_ij^2 / eps)
     W_vals = np.exp(-l2_vals / eps)
     W = sparse.csr_matrix((W_vals, (rows, cols)), shape=(n_cells, n_cells))

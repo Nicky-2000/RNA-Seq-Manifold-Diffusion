@@ -12,6 +12,18 @@ qc:
   min_genes: 200
   max_pct_mt: 15
 
+
+eggfm_model:
+  hidden_dims: [256, 256]   # smaller net for paul15
+
+# Energy model training hyperparams
+eggfm_train:
+  batch_size: 256           # smaller batch for small dataset
+  num_epochs: 50
+  lr: 1e-3
+  sigma: 0.1
+  device: "cuda"
+
 eggfm_diffmap:
   n_neighbors: 30
   n_comps: 30
