@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 
 from .energy_model import EnergyMLP
 from .AnnDataPyTorch import AnnDataExpressionDataset
-
+from scanpy import sc
 
 def train_energy_model(
     ad_prep,  # output of prep(ad, params)
@@ -29,13 +29,14 @@ def train_energy_model(
         early_stop_patience: 0   # 0 => disable early stopping (default)
         early_stop_min_delta: 0.0
     """
+    sc.pp.pca(ad_prep, n_comps=50)
 
     # Device
     device = train_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
 
     # Dataset
     dataset = AnnDataExpressionDataset(ad_prep)
-    n_genes = ad_prep.obsm["X_pca"]
+    n_genes = ad_prep.o["X_pca"]
 
     # Model
     hidden_dims = model_cfg.get("hidden_dims", (512, 512, 512, 512))
