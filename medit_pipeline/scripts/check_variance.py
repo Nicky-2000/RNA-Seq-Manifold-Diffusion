@@ -18,7 +18,7 @@ def main():
     spec = params["spec"]
     k = spec.get("ari_n_dims", spec.get("n_pcs", 10))
 
-    ad = sc.read_h5ad("./data/prep/qc.h5ad")
+    ad = sc.read_h5ad("./data/paul15/paul15.h5ad")
     # your hvg+norm pipeline
     from EGGFM.prep import prep_for_manifolds
 

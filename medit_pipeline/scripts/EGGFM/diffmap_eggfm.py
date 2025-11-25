@@ -8,6 +8,50 @@ from scipy import sparse as sp_sparse
 import torch
 import scanpy as sc
 
+
+def hessian_quadratic_form_batched(
+    energy_model,
+    X_batch: np.ndarray,  # (B, D) base points x_i
+    V_batch: np.ndarray,  # (B, D) directions v_ij
+    device: str = "cuda",
+) -> np.ndarray:
+    """
+    Returns q_b = v_b^T H(x_b) v_b for each (x_b, v_b).
+    """
+    energy_model.eval()
+    X = torch.from_numpy(X_batch).to(device=device, dtype=torch.float32)
+    V = torch.from_numpy(V_batch).to(device=device, dtype=torch.float32)
+
+    X.requires_grad_(True)
+
+    # First gradient: ∇E(x)
+    E = energy_model(X)  # (B,)
+    E_sum = E.sum()
+    (grad_x,) = torch.autograd.grad(
+        E_sum,
+        X,
+        create_graph=True,  # we will differentiate again
+        retain_graph=True,
+        only_inputs=True,
+    )  # grad_x: (B, D)
+
+    # Directional derivative of grad along V: v^T H(x)
+    Hv = torch.autograd.grad(
+        grad_x,
+        X,
+        grad_outputs=V,  # each row of V is v_b
+        create_graph=False,
+        retain_graph=False,
+        only_inputs=True,
+    )[
+        0
+    ]  # Hv: (B, D)
+
+    # v^T H v  = <Hv, v>
+    q = (Hv * V).sum(dim=1)  # (B,)
+    return q.detach().cpu().numpy()
+
+
 def build_eggfm_diffmap(
     ad_prep,
     energy_model,
@@ -28,31 +72,13 @@ def build_eggfm_diffmap(
     """
     use_pca = diff_cfg.get("use_pca", True)
     # Geometry space: used for kNN + Euclidean distances
-    if use_pca and "X_pca" in ad_prep.obsm:
-        X_geom = ad_prep.obsm["X_pca"]
-        print(
-            "[EGGFM DiffMap] using X_pca for geometry with shape",
-            X_geom.shape,
-            flush=True,
-        )
-    else:
-        X_geom = ad_prep.X
-        if sp_sparse.issparse(X_geom):
-            X_geom = X_geom.toarray()
-        X_geom = np.asarray(X_geom, dtype=np.float32)
-        print(
-            "[EGGFM DiffMap] using raw X for geometry with shape",
-            X_geom.shape,
-            flush=True,
-        )
-
     # Energy space: ALWAYS use the original HVG expression matrix which the energy model was trained on.
     X_energy = ad_prep.X
     if sp_sparse.issparse(X_energy):
         X_energy = X_energy.toarray()
     X_energy = np.asarray(X_energy, dtype=np.float32)
 
-    n_cells_geom, D_geom = X_geom.shape
+    n_cells_geom, D_geom = X_energy.shape
     n_cells_energy, D_energy = X_energy.shape
     assert n_cells_geom == n_cells_energy, (
         "Geometry and energy spaces must have the same number of cells, "
@@ -74,8 +100,6 @@ def build_eggfm_diffmap(
 
     metric_gamma = float(diff_cfg.get("metric_gamma", 0.2))
     metric_lambda = float(diff_cfg.get("metric_lambda", 4.0))
-    energy_clip_low = float(diff_cfg.get("energy_clip_low", 0.05))
-    energy_clip_high = float(diff_cfg.get("energy_clip_high", 0.95))
     energy_batch_size = int(diff_cfg.get("energy_batch_size", 2048))
 
     # Move model to device once
@@ -83,7 +107,7 @@ def build_eggfm_diffmap(
     energy_model.eval()
 
     print(
-        f"[EGGFM DiffMap] geometry X shape: {X_geom.shape}, "
+        f"[EGGFM DiffMap] geometry X shape: {X_energy.shape}, "
         f"energy X shape: {X_energy.shape}",
         flush=True,
     )
@@ -104,47 +128,31 @@ def build_eggfm_diffmap(
             E_list.append(Eb.detach().cpu().numpy())
         E_vals = np.concatenate(E_list, axis=0).astype(np.float64)
 
-    clip_mode = diff_cfg.get("clip_mode", "current")
+    # Robust center & scale energies
+    med = np.median(E_vals)
+    mad = np.median(np.abs(E_vals - med)) + 1e-8  # robust scale
+    E_norm = (E_vals - med) / mad
 
-    if clip_mode == "legacy":
-        # Clip energies to avoid extreme tails
-        q_low = np.quantile(E_vals, energy_clip_low)
-        q_hi = np.quantile(E_vals, energy_clip_high)
-        E_clip = np.clip(E_vals, q_low, q_hi)
-        # Scalar conformal metric field
-        G = metric_gamma + metric_lambda * np.exp(E_clip)  # shape (n_cells,)
-        print(
-            "[EGGFM DiffMap] metric G stats: "
-            f"min={G.min():.4f}, max={G.max():.4f}, mean={G.mean():.4f}",
-            flush=True,
+    # Clip normalized energies to a small range, e.g. [-3, 3]
+    max_abs = float(diff_cfg.get("energy_clip_abs", 3.0))
+    E_clip = np.clip(E_norm, -max_abs, max_abs)
+
+    # Scalar conformal metric field
+    G = metric_gamma + metric_lambda * np.exp(
+        E_clip
+    )  # E_clip ∈ [-3,3] → exp ∈ [~0.05, ~20]
+    if not np.isfinite(G).all():
+        raise ValueError(
+            "[EGGFM DiffMap] non-finite values in G after exp; "
+            "check energy normalization / clipping."
         )
-
-    elif clip_mode == "current":
-        # Robust center & scale energies
-        med = np.median(E_vals)
-        mad = np.median(np.abs(E_vals - med)) + 1e-8  # robust scale
-        E_norm = (E_vals - med) / mad
-
-        # Clip normalized energies to a small range, e.g. [-3, 3]
-        max_abs = float(diff_cfg.get("energy_clip_abs", 3.0))
-        E_clip = np.clip(E_norm, -max_abs, max_abs)
-
-        # Scalar conformal metric field
-        G = metric_gamma + metric_lambda * np.exp(
-            E_clip
-        )  # E_clip ∈ [-3,3] → exp ∈ [~0.05, ~20]
-        if not np.isfinite(G).all():
-            raise ValueError(
-                "[EGGFM DiffMap] non-finite values in G after exp; "
-                "check energy normalization / clipping."
-            )
-        print(
-            "[EGGFM DiffMap] energy stats: "
-            f"raw_min={E_vals.min():.4f}, raw_max={E_vals.max():.4f}, "
-            f"norm_min={E_norm.min():.4f}, norm_max={E_norm.max():.4f}, "
-            f"clip=[{-max_abs:.1f}, {max_abs:.1f}]",
-            flush=True,
-        )
+    print(
+        "[EGGFM DiffMap] energy stats: "
+        f"raw_min={E_vals.min():.4f}, raw_max={E_vals.max():.4f}, "
+        f"norm_min={E_norm.min():.4f}, norm_max={E_norm.max():.4f}, "
+        f"clip=[{-max_abs:.1f}, {max_abs:.1f}]",
+        flush=True,
+    )
 
     # ------------------------------------------------------------
     # 1) kNN for neighbor selection in GEOMETRY SPACE
@@ -154,8 +162,8 @@ def build_eggfm_diffmap(
         flush=True,
     )
     nn = NearestNeighbors(n_neighbors=n_neighbors + 1, metric="euclidean")
-    nn.fit(X_geom)
-    distances, indices = nn.kneighbors(X_geom)
+    nn.fit(X_energy)
+    distances, indices = nn.kneighbors(X_energy)
 
     # neighbors per cell (excluding self)
     k = indices.shape[1] - 1
@@ -189,35 +197,36 @@ def build_eggfm_diffmap(
         i_batch = rows[start:end]
         j_batch = cols[start:end]
 
-        Xi_batch = X_geom[i_batch]  # (B, D_geom)
-        Xj_batch = X_geom[j_batch]  # (B, D_geom)
-        V_batch = Xj_batch - Xi_batch
+        # Geometry is only for neighbor selection; we don't actually need it here
+        # Xi_batch_geom = X_geom[i_batch]
+        # Xj_batch_geom = X_geom[j_batch]
+        # V_batch_geom = Xj_batch_geom - Xi_batch_geom
 
-        eucl2 = np.sum(V_batch * V_batch, axis=1)  # (B,)
+        Xi_batch_energy = X_energy[i_batch]  # (B, D)
+        Xj_batch_energy = X_energy[j_batch]  # (B, D)
+        V_batch_energy = Xj_batch_energy - Xi_batch_energy
 
-        Gi = G[i_batch]
-        Gj = G[j_batch]
-        G_edge = 0.5 * (Gi + Gj)
+        # Optionally normalize direction to unit length:
+        norms = np.linalg.norm(V_batch_energy, axis=1, keepdims=True) + 1e-8
+        V_unit = V_batch_energy / norms
+        q_dir = hessian_quadratic_form_batched(
+            energy_model, Xi_batch_energy, V_unit, device
+        )
 
-        q_batch = G_edge * eucl2
-        q_batch[q_batch < 1e-12] = 1e-12
+        q_dir = np.asarray(q_dir, dtype=np.float64)
+        q_dir[q_dir < 1e-12] = 1e-12
 
-        l2_vals[start:end] = q_batch
+        # Now put magnitude back in: ||v||^2 (note: norms has shape (B,1))
+        norm_sq = norms.squeeze(-1) ** 2  # (B,)
+
+        # Store in global array of edges
+        l2_vals[start:end] = q_dir * norm_sq
 
         if (b + 1) % 50 == 0 or b == n_batches - 1:
             print(
                 f"  processed batch {b+1}/{n_batches} ({end} / {n_edges} edges)",
                 flush=True,
             )
-
-    # Optional: clip extreme metric values (robust quantiles)
-    if diff_cfg.get("eps_trunc") == "upper":
-        q_hi = np.quantile(l2_vals, 0.99)
-        l2_vals = np.minimum(l2_vals, q_hi)
-        print(
-            f"[EGGFM DiffMap] eps_trunc=upper, clipped l2_vals to <= {q_hi:.4g}",
-            flush=True,
-        )
 
     # ------------------------------------------------------------
     # 3) Choose kernel bandwidth ε
