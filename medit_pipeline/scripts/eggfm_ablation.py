@@ -103,6 +103,10 @@ def main() -> None:
     metric_lambda_grid = [2.0, 4.0]
     eps_trunc_grid = ["no", "yes"]
 
+    # NEW: diffusion-time and neighborhood grids
+    t_grid = [0.5, 1.0, 2.0]  # diffusion time in build_eggfm_diffmap
+    n_neighbors_grid = [15, 30, 50]  # neighbors used inside EGGFM DM *and* Scanpy DM
+
     # keep metric_gamma from base params, or default if missing
     base_metric_gamma = params.get("eggfm_diffmap", {}).get("metric_gamma", 0.2)
 
@@ -111,7 +115,8 @@ def main() -> None:
         with out_txt_path.open("w") as f:
             f.write(
                 "dataset\thidden_dims\tsigma\tmetric_gamma\tmetric_lambda\t"
-                "eps_trunc\tari_diffmap_eggfm\tari_diffmap_eggfm_x2\n"
+                "eps_trunc\tt\tn_neighbors\t"
+                "ari_diffmap_eggfm\tari_diffmap_eggfm_x2\n"
             )
 
     # ---- ablation loop ----
@@ -120,68 +125,86 @@ def main() -> None:
         for sigma in sigma_grid:
             for lam in metric_lambda_grid:
                 for eps_trunc in eps_trunc_grid:
-                    combo_idx += 1
-                    print(
-                        f"[main] === combo {combo_idx}: "
-                        f"hidden_dims={hd}, sigma={sigma}, "
-                        f"metric_lambda={lam}, eps_trunc={eps_trunc} ===",
-                        flush=True,
-                    )
+                    for t_val in t_grid:
+                        for k_neighbors in n_neighbors_grid:
+                            combo_idx += 1
+                            print(
+                                f"[main] === combo {combo_idx}: "
+                                f"hidden_dims={hd}, sigma={sigma}, "
+                                f"metric_lambda={lam}, eps_trunc={eps_trunc}, "
+                                f"t={t_val}, n_neighbors={k_neighbors} ===",
+                                flush=True,
+                            )
 
-                    # Deep copy base params and apply overrides
-                    cfg = copy.deepcopy(params)
-                    cfg.setdefault("eggfm_model", {})
-                    cfg.setdefault("eggfm_train", {})
-                    cfg.setdefault("eggfm_diffmap", {})
+                            # Deep copy base params and apply overrides
+                            cfg = copy.deepcopy(params)
+                            cfg.setdefault("eggfm_model", {})
+                            cfg.setdefault("eggfm_train", {})
+                            cfg.setdefault("eggfm_diffmap", {})
 
-                    cfg["eggfm_model"]["hidden_dims"] = hd
-                    cfg["eggfm_train"]["sigma"] = float(sigma)
-                    cfg["eggfm_diffmap"]["metric_gamma"] = float(base_metric_gamma)
-                    cfg["eggfm_diffmap"]["metric_lambda"] = float(lam)
-                    cfg["eggfm_diffmap"]["eps_trunc"] = str(eps_trunc)
+                            cfg["eggfm_model"]["hidden_dims"] = hd
+                            cfg["eggfm_train"]["sigma"] = float(sigma)
+                            cfg["eggfm_diffmap"]["metric_gamma"] = float(
+                                base_metric_gamma
+                            )
+                            cfg["eggfm_diffmap"]["metric_lambda"] = float(lam)
+                            cfg["eggfm_diffmap"]["eps_trunc"] = str(eps_trunc)
+                            cfg["eggfm_diffmap"]["t"] = float(t_val)
+                            cfg["eggfm_diffmap"]["n_neighbors"] = int(k_neighbors)
 
-                    # Work on a copy of qc_ad so we don't keep stacking obsm keys
-                    qc_run = qc_ad.copy()
+                            # Work on a copy of qc_ad so we don't keep stacking obsm keys
+                            qc_run = qc_ad.copy()
 
-                    # ---- 1) Run EGGFM + pure EGGFM Diffmap ----
-                    qc_run, _ = run_eggfm_dimred(qc_run, cfg)
-                    # At this point qc_run.obsm["X_eggfm"] should be the pure EGGFM DM
+                            # ---- 1) Run EGGFM + pure EGGFM Diffmap ----
+                            qc_run, _ = run_eggfm_dimred(qc_run, cfg)
+                            # At this point qc_run.obsm["X_eggfm"] should be the pure EGGFM DM
+                            # built with t = t_val and n_neighbors = k_neighbors (inside EGGFM DM).
 
-                    # ---- 2) Build double diffusion on top of X_eggfm ----
-                    n_pcs = int(spec.get("n_pcs", 10))
-                    sc.pp.neighbors(qc_run, n_neighbors=30, use_rep="X_eggfm")
-                    sc.tl.diffmap(qc_run, n_comps=n_pcs)
-                    qc_run.obsm["X_diff_eggfm_x2"] = qc_run.obsm["X_diffmap"][:, :n_pcs]
+                            # ---- 2) Build double diffusion on top of X_eggfm ----
+                            n_pcs = int(spec.get("n_pcs", 10))
+                            sc.pp.neighbors(
+                                qc_run,
+                                n_neighbors=k_neighbors,  # match EGGFM k for fairness
+                                use_rep="X_eggfm",
+                            )
+                            sc.tl.diffmap(qc_run, n_comps=n_pcs)
+                            qc_run.obsm["X_diff_eggfm_x2"] = qc_run.obsm["X_diffmap"][
+                                :, :n_pcs
+                            ]
 
-                    # ---- 3) Compute ARIs ----
-                    try:
-                        ari_eggfm = compute_ari(
-                            qc_run, "X_eggfm", label_key, ari_n_dims
-                        )
-                    except Exception as e:
-                        print(f"[main] ARI failed for X_eggfm: {e}", flush=True)
-                        ari_eggfm = float("nan")
+                            # ---- 3) Compute ARIs ----
+                            try:
+                                ari_eggfm = compute_ari(
+                                    qc_run, "X_eggfm", label_key, ari_n_dims
+                                )
+                            except Exception as e:
+                                print(f"[main] ARI failed for X_eggfm: {e}", flush=True)
+                                ari_eggfm = float("nan")
 
-                    try:
-                        ari_eggfm_x2 = compute_ari(
-                            qc_run, "X_diff_eggfm_x2", label_key, ari_n_dims
-                        )
-                    except Exception as e:
-                        print(f"[main] ARI failed for X_diff_eggfm_x2: {e}", flush=True)
-                        ari_eggfm_x2 = float("nan")
+                            try:
+                                ari_eggfm_x2 = compute_ari(
+                                    qc_run, "X_diff_eggfm_x2", label_key, ari_n_dims
+                                )
+                            except Exception as e:
+                                print(
+                                    f"[main] ARI failed for X_diff_eggfm_x2: {e}",
+                                    flush=True,
+                                )
+                                ari_eggfm_x2 = float("nan")
 
-                    print(
-                        f"[main] combo {combo_idx} ARIs: "
-                        f"eggfm={ari_eggfm:.4f}, eggfm_x2={ari_eggfm_x2:.4f}",
-                        flush=True,
-                    )
+                            print(
+                                f"[main] combo {combo_idx} ARIs: "
+                                f"eggfm={ari_eggfm:.4f}, eggfm_x2={ari_eggfm_x2:.4f}",
+                                flush=True,
+                            )
 
-                    # ---- 4) Append to txt file ----
-                    with out_txt_path.open("a") as f:
-                        f.write(
-                            f"{dataset_name}\t{hd}\t{sigma}\t{base_metric_gamma}\t{lam}\t"
-                            f"{eps_trunc}\t{ari_eggfm:.6f}\t{ari_eggfm_x2:.6f}\n"
-                        )
+                            # ---- 4) Append to txt file ----
+                            with out_txt_path.open("a") as f:
+                                f.write(
+                                    f"{dataset_name}\t{hd}\t{sigma}\t{base_metric_gamma}\t{lam}\t"
+                                    f"{eps_trunc}\t{t_val}\t{k_neighbors}\t"
+                                    f"{ari_eggfm:.6f}\t{ari_eggfm_x2:.6f}\n"
+                                )
 
     print(f"[main] ablation done, results at {out_txt_path}", flush=True)
 
