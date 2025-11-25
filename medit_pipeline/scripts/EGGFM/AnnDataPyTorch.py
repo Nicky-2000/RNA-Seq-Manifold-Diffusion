@@ -14,7 +14,7 @@ class AnnDataExpressionDataset(Dataset):
     """
 
     def __init__(self, ad: "sc.AnnData", float_dtype: np.dtype = np.float32):
-        X = ad.X
+        X = ad.obsm["X_pca"]
         if sparse.issparse(X):
             X = X.toarray()
         X = np.asarray(X, dtype=float_dtype)

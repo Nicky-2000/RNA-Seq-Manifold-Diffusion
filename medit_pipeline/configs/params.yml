@@ -43,34 +43,3 @@ eggfm_diffmap:
   energy_clip_low: 0.05     # quantile for lower energy clipping
   energy_clip_high: 0.95    # quantile for upper energy clipping
   energy_batch_size: 2048   # batch size for E(x) computation
-seed: 7
-hvg_n_top_genes: 2000
-
-spec:
-  n_pcs: 20
-  dcol_max_cells: 3000
-  ari_label_key: "paul15_clusters"        # <-- this must match an obs column name
-  ari_n_dims: 10              # how many dims to use for ARI per embedding
-
-qc:
-  min_cells: 500
-  min_genes: 200
-  max_pct_mt: 15
-
-eggfm_diffmap:
-  n_neighbors: 30
-  n_comps: 30
-  device: "cuda"
-  hvp_batch_size: 1024      # now just edge_batch_size
-  eps_mode: "median"
-  eps_value: 1.0
-  eps_trunc: "yes"
-  clip_mode: "current"
-  t: 1.0
-
-  # NEW: energy-based conformal metric hyperparams
-  metric_gamma: 0.2         # baseline metric weight
-  metric_lambda: 0.0        # how strongly energy rescales distances
-  energy_clip_low: 0.05     # quantile for lower energy clipping
-  energy_clip_high: 0.95    # quantile for upper energy clipping
-  energy_batch_size: 2048   # batch size for E(x) computation
