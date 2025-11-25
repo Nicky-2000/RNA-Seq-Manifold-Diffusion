@@ -156,14 +156,12 @@ def neighbor_overlap(X1, X2, k=30, n_subsample=2000, seed=0):
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="QC + EDA for unperturbed cells.")
     ap.add_argument("--params", required=True, help="configs/params.yml")
-    ap.add_argument("--out", required=True, help="out/interim")
-    ap.add_argument("--pca", required=True, help="path to unperturbed .h5ad")
-    ap.add_argument("--ari", required=True, help="path to unperturbed .h5ad")
-    ap.add_argument("--umap", required=True, help="path to unperturbed .h5ad")
-    ap.add_argument("--ad", required=True, help="path to unperturbed .h5ad")
-    ap.add_argument(
-        "--ari-stab", action="store_true", help="emit qc_summary, plots, manifest"
-    )
+    ap.add_argument("--out", default=None, help="out/interim")
+    ap.add_argument("--pca", default=None, help="path to unperturbed .h5ad")
+    ap.add_argument("--ari", default=None, help="path to unperturbed .h5ad")
+    ap.add_argument("--umap", default=None, help="path to unperturbed .h5ad")
+    ap.add_argument("--ad", default=None, help="path to unperturbed .h5ad")
+    ap.add_argument("--ari-stab", default=None, help="emit qc_summary, plots, manifest")
     ap.add_argument(
         "--report-to-gcs",
         metavar="GS_PREFIX",
