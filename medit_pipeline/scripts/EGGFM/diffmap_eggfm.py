@@ -108,6 +108,23 @@ def build_eggfm_diffmap(
         flush=True,
     )
 
+    # Hessian mixing hyperparams
+    hessian_mix_mode = diff_cfg.get(
+        "hessian_mix_mode", "additive"
+    )  # "additive", "multiplicative", or "none"
+    hessian_mix_alpha = float(
+        diff_cfg.get("hessian_mix_alpha", 0.3)
+    )  # strength of Hessian in additive mode
+    hessian_beta = float(
+        diff_cfg.get("hessian_beta", 0.3)
+    )  # strength of anisotropy in multiplicative mode
+    hessian_clip_std = float(
+        diff_cfg.get("hessian_clip_std", 2.0)
+    )  # |z| <= this after standardization
+    hessian_use_neg = bool(
+        diff_cfg.get("hessian_use_neg", True)
+    )  # flip sign to use curvature of -log p
+
     # ------------------------------------------------------------
     # 1) kNN for neighbor selection in GEOMETRY SPACE
     # ------------------------------------------------------------
@@ -141,6 +158,11 @@ def build_eggfm_diffmap(
         flush=True,
     )
     n_batches = (n_edges + edge_batch_size - 1) // edge_batch_size
+    print(
+        "[EGGFM DiffMap] computing Hessian-based edge lengths...",
+        flush=True,
+    )
+    n_batches = (n_edges + edge_batch_size - 1) // edge_batch_size
 
     for b in range(n_batches):
         start = b * edge_batch_size
@@ -151,30 +173,68 @@ def build_eggfm_diffmap(
         i_batch = rows[start:end]
         j_batch = cols[start:end]
 
-        # Geometry is only for neighbor selection; we don't actually need it here
-        # Xi_batch_geom = X_geom[i_batch]
-        # Xj_batch_geom = X_geom[j_batch]
-        # V_batch_geom = Xj_batch_geom - Xi_batch_geom
+        # Work entirely in energy / HVG space
+        Xi_batch = X_energy[i_batch]  # (B, D)
+        Xj_batch = X_energy[j_batch]  # (B, D)
+        V_batch = Xj_batch - Xi_batch  # (B, D)
 
-        Xi_batch_energy = X_energy[i_batch]  # (B, D)
-        Xj_batch_energy = X_energy[j_batch]  # (B, D)
-        V_batch_energy = Xj_batch_energy - Xi_batch_energy
-
-        # Optionally normalize direction to unit length:
-        norms = np.linalg.norm(V_batch_energy, axis=1, keepdims=True) + 1e-8
-        V_unit = V_batch_energy / norms
-        q_dir = hessian_quadratic_form_batched(
-            energy_model, Xi_batch_energy, V_unit, device
-        )
-
-        q_dir = np.asarray(q_dir, dtype=np.float64)
-        q_dir[q_dir < 1e-12] = 1e-12
-
-        # Now put magnitude back in: ||v||^2 (note: norms has shape (B,1))
+        # Euclidean baseline: ||v||^2
+        norms = np.linalg.norm(V_batch, axis=1, keepdims=True) + 1e-8  # (B,1)
         norm_sq = norms.squeeze(-1) ** 2  # (B,)
+        eucl2 = norm_sq.copy()
 
-        # Store in global array of edges
-        l2_vals[start:end] = q_dir * norm_sq
+        if hessian_mix_mode == "none":
+            # Pure Euclidean edge lengths
+            l2_vals[start:end] = eucl2
+        else:
+            # Unit directions for Hessian quadratic form
+            V_unit = V_batch / norms  # (B, D)
+
+            # q_dir = v^T H(x) v
+            q_dir = hessian_quadratic_form_batched(
+                energy_model, Xi_batch, V_unit, device
+            )
+            q_dir = np.asarray(q_dir, dtype=np.float64)
+
+            # Optionally interpret curvature of -log p instead of E directly
+            if hessian_use_neg:
+                q_dir = -q_dir
+
+            # Basic positivity / stability
+            q_dir[np.isnan(q_dir)] = 0.0
+            q_dir[q_dir < 1e-12] = 1e-12
+
+            if hessian_mix_mode == "additive":
+                # Rescale q_dir to live on the same scale as eucl2 using medians
+                med_e = np.median(eucl2)
+                med_q = np.median(q_dir)
+                scale = med_e / (med_q + 1e-8)
+                q_rescaled = q_dir * scale
+                q_rescaled[q_rescaled < 1e-12] = 1e-12
+
+                alpha = hessian_mix_alpha
+                alpha = max(0.0, min(1.0, alpha))  # clamp to [0,1]
+
+                l2_vals[start:end] = (1.0 - alpha) * eucl2 + alpha * q_rescaled
+
+            elif hessian_mix_mode == "multiplicative":
+                # Standardize q_dir in this batch, then exponentiate to get a bounded factor
+                med_q = np.median(q_dir)
+                mad_q = np.median(np.abs(q_dir - med_q)) + 1e-8
+                q_std = (q_dir - med_q) / mad_q  # (B,)
+
+                # Clip to control extremes
+                c = hessian_clip_std
+                q_std = np.clip(q_std, -c, c)
+
+                beta = hessian_beta
+                # Factor in [exp(-beta*c), exp(beta*c)]
+                factor = np.exp(beta * q_std)
+
+                l2_vals[start:end] = eucl2 * factor
+
+            else:
+                raise ValueError(f"Unknown hessian_mix_mode: {hessian_mix_mode!r}")
 
         if (b + 1) % 50 == 0 or b == n_batches - 1:
             print(

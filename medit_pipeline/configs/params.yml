@@ -30,11 +30,14 @@ eggfm_diffmap:
   n_neighbors: 30
   n_comps: 30
   device: "cuda"
-  hvp_batch_size: 1024      # now just edge_batch_size
+  hvp_batch_size: 1024
   eps_mode: "median"
-  eps_value: 1.0
-  eps_trunc: "yes"
+  eps_trunc: "no"
   t: 1.0
+
+  hessian_mix_mode: "additive"
+  hessian_mix_alpha: 0.2   # start small
+  hessian_use_neg: true    # interpret curvature of -log p
 
   # NEW: energy-based conformal metric hyperparams
   metric_lambda: 4.0        # how strongly energy rescales distances
