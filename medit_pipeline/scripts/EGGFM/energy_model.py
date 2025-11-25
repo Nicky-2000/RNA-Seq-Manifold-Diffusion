@@ -23,7 +23,7 @@ class EnergyMLP(nn.Module):
             activation = nn.Softplus()
 
         layers = []
-        in_dim = 50
+        in_dim = n_genes
         for h in hidden_dims:
             layers.append(nn.Linear(in_dim, h))
             layers.append(activation)

@@ -40,7 +40,7 @@ def main():
         X_pca_dm = qc.obsm["X_diffmap"][:, :k]
 
         # EGGFM DM
-        X_eggfm = qc.obsm["X_eggfm"][:, :k]
+        # X_eggfm = qc.obsm["X_eggfm"][:, :k]
 
         # scores_pca.append(compute_ari(X_pca_dm, labels, k))
         # scores_eggfm.append(compute_ari(X_eggfm, labels, k))
