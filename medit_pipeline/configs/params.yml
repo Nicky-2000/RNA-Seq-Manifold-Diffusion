@@ -4,10 +4,11 @@ hvg_n_top_genes: 2000
 spec:
   n_pcs: 20
   dcol_max_cells: 3000
-  ari_label_key: "Cell type annotation"        # <-- this must match an obs column name      # <-- this must match an obs column name
-  # ari_label_key: "paul15_clusters"        # <-- this must match an obs column name      # <-- this must match an obs column name
+  # ari_label_key: "Cell type annotation"        # <-- this must match an obs column name      # <-- this must match an obs column name
+  ari_label_key: "paul15_clusters"        # <-- this must match an obs column name      # <-- this must match an obs column name
   ari_n_dims: 10              # how many dims to use for ARI per embedding
-  ad_file: data/prep/qc.h5ad
+  ad_file: data/paul15/paul15.h5ad
+  # ad_file: data/prep/qc.h5ad
 qc:
   min_cells: 500
   min_genes: 200
@@ -24,22 +25,23 @@ eggfm_train:
   sigma: 0.1
   early_stop_patience: 5
   early_stop_min_delta: 1e-4
-  latent_space: HVG
+  latent_space: PCA
 
 
 eggfm_diffmap:
-  latent_space: HVG
   n_neighbors: 30
   n_comps: 30
   device: "cuda"
-  hvp_batch_size: 1024      # still used as edge batch_size
-  energy_batch_size: 2048
+  hvp_batch_size: 1024
   eps_mode: "median"
-  eps_value: 1.0
   eps_trunc: "no"
   t: 1.0
 
-alpha_normal: 0.5
+  hessian_mix_mode: "multiplicative"
+  hessian_beta: 0.2
+  hessian_clip_std: 2.0
+  hessian_use_neg: true
+
 
 # NEW: energy-based conformal metric hyperparams
 metric_lambda: 4.0        # how strongly energy rescales distances

@@ -10,43 +10,45 @@ import torch
 import scanpy as sc
 from .EnergyMLP import EnergyMLP
 
-def compute_scores_batched(
+
+def hessian_quadratic_form_batched(
     energy_model,
-    X_energy: np.ndarray,  # (N, D)
-    energy_batch_size: int,
+    X_batch: np.ndarray,  # (B, D) base points x_i
+    V_batch: np.ndarray,  # (B, D) directions v_ij
     device: str = "cuda",
 ) -> np.ndarray:
-    """
-    Approximate score(x) = -∇_x E(x) for all cells, in batches.
 
-    Returns: scores of shape (N, D)
-    """
     energy_model.eval()
-    scores = []
+    X = torch.from_numpy(X_batch).to(device=device, dtype=torch.float32)
+    V = torch.from_numpy(V_batch).to(device=device, dtype=torch.float32)
+    X.requires_grad_(True)
 
-    N = X_energy.shape[0]
-    X_tensor_full = torch.from_numpy(X_energy).to(device=device, dtype=torch.float32)
+    # First gradient: ∇E(x)
+    E = energy_model(X)  # (B,)
+    E_sum = E.sum()
+    (grad_x,) = torch.autograd.grad(
+        E_sum,
+        X,
+        create_graph=True,  # we will differentiate again
+        retain_graph=True,
+        only_inputs=True,
+    )  # grad_x: (B, D)
 
-    for start in range(0, N, energy_batch_size):
-        end = min(start + energy_batch_size, N)
-        xb = X_tensor_full[start:end]  # (B, D)
-        xb = xb.clone().detach().requires_grad_(True)
+    # Directional derivative of grad along V: v^T H(x)
+    Hv = torch.autograd.grad(
+        grad_x,
+        X,
+        grad_outputs=V,  # each row of V is v_b
+        create_graph=False,
+        retain_graph=False,
+        only_inputs=True,
+    )[
+        0
+    ]  # Hv: (B, D)
 
-        energy = energy_model(xb)  # (B,)
-        energy_sum = energy.sum()
-        (grad_x,) = torch.autograd.grad(
-            energy_sum,
-            xb,
-            create_graph=False,
-            retain_graph=False,
-            only_inputs=True,
-        )
-        s_batch = -grad_x.detach().cpu().numpy()  # (B, D)
-
-        scores.append(s_batch)
-
-    S = np.concatenate(scores, axis=0).astype(np.float32)
-    return S
+    # v^T H v  = <Hv, v>
+    q = (Hv * V).sum(dim=1)  # (B,)
+    return q.detach().cpu().numpy()
 
 
 def build_eggfm_diffmap(
@@ -97,35 +99,17 @@ def build_eggfm_diffmap(
     eps_value = diff_cfg.get("eps_value", 1.0)
 
     edge_batch_size = diff_cfg.get("hvp_batch_size", 1024)  # reused as edge batch size
-    energy_batch_size = int(diff_cfg.get("energy_batch_size", 2048))
 
     t = diff_cfg.get("t", 1.0)
 
-    # New hyperparameter: how much to penalize motion along the score (normal)
-    alpha_normal = float(diff_cfg.get("alpha_normal", 0.2))
-
     # Move model to device once
     energy_model = energy_model.to(device)
-
-    # ------------------------------------------------------------
-    # 0) Compute scores s(x) ≈ ∇ log p(x) = -∇E(x) for all cells
-    # ------------------------------------------------------------
-    print("[EGGFM DiffMap] computing score(x) for all cells...", flush=True)
-    S = compute_scores_batched(
-        energy_model,
-        X_energy,
-        energy_batch_size=energy_batch_size,
-        device=device,
-    )  # (N, D)
-
-    # Optional: print some score stats
-    norms = np.linalg.norm(S, axis=1)
+    energy_model.eval()
     print(
-        "[EGGFM DiffMap] score stats: "
-        f"||s|| min={norms.min():.4f}, max={norms.max():.4f}, mean={norms.mean():.4f}",
+        f"[EGGFM DiffMap] geometry X shape: {X_energy.shape}, "
+        f"energy X shape: {X_energy.shape}",
         flush=True,
     )
-
     # ------------------------------------------------------------
     # 1) kNN in geometry space (here: HVG space)
     # ------------------------------------------------------------
@@ -152,10 +136,27 @@ def build_eggfm_diffmap(
     l2_vals = np.empty(n_edges, dtype=np.float64)
 
     print(
-        "[EGGFM DiffMap] computing score-tangent edge lengths...",
+        "[EGGFM DiffMap] computing Hessian-based edge lengths...",
         flush=True,
     )
     n_batches = (n_edges + edge_batch_size - 1) // edge_batch_size
+
+    # Hessian mixing hyperparams
+    hessian_mix_mode = diff_cfg.get(
+        "hessian_mix_mode", "additive"
+    )  # "additive", "multiplicative", or "none"
+    hessian_mix_alpha = float(
+        diff_cfg.get("hessian_mix_alpha", 0.3)
+    )  # strength of Hessian in additive mode
+    hessian_beta = float(
+        diff_cfg.get("hessian_beta", 0.3)
+    )  # strength of anisotropy in multiplicative mode
+    hessian_clip_std = float(
+        diff_cfg.get("hessian_clip_std", 2.0)
+    )  # |z| <= this after standardization
+    hessian_use_neg = bool(
+        diff_cfg.get("hessian_use_neg", True)
+    )  # flip sign to use curvature of -log p
 
     for b in range(n_batches):
         start = b * edge_batch_size
@@ -166,31 +167,68 @@ def build_eggfm_diffmap(
         i_batch = rows[start:end]
         j_batch = cols[start:end]
 
-        Xi = X_energy[i_batch]  # (B, D)
-        Xj = X_energy[j_batch]  # (B, D)
-        V = Xj - Xi  # (B, D)
+        # Work entirely in energy / HVG space
+        Xi_batch = X_energy[i_batch]  # (B, D)
+        Xj_batch = X_energy[j_batch]  # (B, D)
+        V_batch = Xj_batch - Xi_batch  # (B, D)
 
-        # Scores at the base points
-        S_i = S[i_batch]  # (B, D)
-        # Normalize scores to unit vectors (with eps)
-        S_norm = np.linalg.norm(S_i, axis=1, keepdims=True) + 1e-8
-        n_i = S_i / S_norm  # (B, D)
+        # Euclidean baseline: ||v||^2
+        norms = np.linalg.norm(V_batch, axis=1, keepdims=True) + 1e-8  # (B,1)
+        norm_sq = norms.squeeze(-1) ** 2  # (B,)
+        eucl2 = norm_sq.copy()
 
-        # Decompose displacement into parallel and tangent components
-        v_par_scalar = np.sum(V * n_i, axis=1, keepdims=True)  # (B, 1)
-        v_par = v_par_scalar * n_i  # (B, D)
-        v_tan = V - v_par  # (B, D)
+        if hessian_mix_mode == "none":
+            # Pure Euclidean edge lengths
+            l2_vals[start:end] = eucl2
+        else:
+            # Unit directions for Hessian quadratic form
+            V_unit = V_batch / norms  # (B, D)
 
-        # Score-tangent distance
-        tan_sq = np.sum(v_tan * v_tan, axis=1)  # (B,)
-        par_sq = np.sum(v_par * v_par, axis=1)  # (B,)
+            # q_dir = v^T H(x) v
+            q_dir = hessian_quadratic_form_batched(
+                energy_model, Xi_batch, V_unit, device
+            )
+            q_dir = np.asarray(q_dir, dtype=np.float64)
 
-        q_batch = tan_sq + alpha_normal * par_sq
+            # Optionally interpret curvature of -log p instead of E directly
+            if hessian_use_neg:
+                q_dir = -q_dir
 
-        # Numerical floor
-        q_batch[q_batch < 1e-12] = 1e-12
+            # Basic positivity / stability
+            q_dir[np.isnan(q_dir)] = 0.0
+            q_dir[q_dir < 1e-12] = 1e-12
 
-        l2_vals[start:end] = q_batch
+            if hessian_mix_mode == "additive":
+                # Rescale q_dir to live on the same scale as eucl2 using medians
+                med_e = np.median(eucl2)
+                med_q = np.median(q_dir)
+                scale = med_e / (med_q + 1e-8)
+                q_rescaled = q_dir * scale
+                q_rescaled[q_rescaled < 1e-12] = 1e-12
+
+                alpha = hessian_mix_alpha
+                alpha = max(0.0, min(1.0, alpha))  # clamp to [0,1]
+
+                l2_vals[start:end] = (1.0 - alpha) * eucl2 + alpha * q_rescaled
+
+            elif hessian_mix_mode == "multiplicative":
+                # Standardize q_dir in this batch, then exponentiate to get a bounded factor
+                med_q = np.median(q_dir)
+                mad_q = np.median(np.abs(q_dir - med_q)) + 1e-8
+                q_std = (q_dir - med_q) / mad_q  # (B,)
+
+                # Clip to control extremes
+                c = hessian_clip_std
+                q_std = np.clip(q_std, -c, c)
+
+                beta = hessian_beta
+                # Factor in [exp(-beta*c), exp(beta*c)]
+                factor = np.exp(beta * q_std)
+
+                l2_vals[start:end] = eucl2 * factor
+
+            else:
+                raise ValueError(f"Unknown hessian_mix_mode: {hessian_mix_mode!r}")
 
         if (b + 1) % 50 == 0 or b == n_batches - 1:
             print(
