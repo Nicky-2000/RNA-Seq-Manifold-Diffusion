@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 
 from .energy_model import EnergyMLP
 from .AnnDataPyTorch import AnnDataExpressionDataset
-from scanpy import sc
+import scanpy as sc
 
 def train_energy_model(
     ad_prep,  # output of prep(ad, params)
