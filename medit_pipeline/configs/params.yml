@@ -44,7 +44,7 @@ eggfm_diffmap:
   eps_trunc: "no"
   t: 1.0
 
-  hessian_mix_mode: "multiplicative"
+  hessian_mix_mode: "none"
   hessian_beta: 0.2
   hessian_clip_std: 2.0
   hessian_use_neg: true
