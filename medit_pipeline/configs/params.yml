@@ -48,7 +48,6 @@ eggfm_diffmap:
 
   alpha_normal: 0.2
 
-
   # NEW: energy-based conformal metric hyperparams
   metric_lambda: 4.0        # how strongly energy rescales distances
   energy_clip_low: 0.05     # quantile for lower energy clipping
