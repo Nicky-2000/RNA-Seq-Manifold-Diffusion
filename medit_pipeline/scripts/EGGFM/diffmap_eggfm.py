@@ -8,7 +8,7 @@ from sklearn.neighbors import NearestNeighbors
 from scipy import sparse as sp_sparse
 import torch
 import scanpy as sc
-
+from .EnergyMLP import EnergyMLP
 
 def compute_scores_batched(
     energy_model,
@@ -51,7 +51,7 @@ def compute_scores_batched(
 
 def build_eggfm_diffmap(
     ad_prep,
-    energy_model,
+    energy_model: EnergyMLP,
     diff_cfg: Dict[str, Any],
 ):
     """
@@ -72,7 +72,11 @@ def build_eggfm_diffmap(
     """
 
     # Geometry / energy space: log-normalized HVG expression
-    X_energy = ad_prep.X
+    if diff_cfg.get("latent_space") == "HVG":
+        X_energy = ad_prep.X
+    else:
+        X_energy = ad_prep.obsm["X_pca"]
+
     if sp_sparse.issparse(X_energy):
         X_energy = X_energy.toarray()
     X_energy = np.asarray(X_energy, dtype=np.float32)

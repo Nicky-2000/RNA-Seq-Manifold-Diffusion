@@ -3,7 +3,7 @@ import torch
 from torch import optim
 from torch.utils.data import DataLoader
 
-from .energy_model import EnergyMLP
+from .EnergyMLP import EnergyMLP
 from .AnnDataPyTorch import AnnDataExpressionDataset
 import scanpy as sc
 
@@ -33,10 +33,14 @@ def train_energy_model(
 
     # Device
     device = train_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+    if train_cfg.get("latent_space") == "HVG":
+        # Dataset
+        dataset = AnnDataExpressionDataset(ad_prep)
+    else:
+        sc.pp.pca(ad_prep, n_comps=50)
+        dataset = AnnDataExpressionDataset(ad_prep.obsm["X_pca"])
 
-    # Dataset
-    dataset = AnnDataExpressionDataset(ad_prep)
-    n_genes = ad_prep.X.shape[1]
+    n_genes = dataset.X.shape[1]
 
     # Model
     hidden_dims = model_cfg.get("hidden_dims", (512, 512, 512, 512))

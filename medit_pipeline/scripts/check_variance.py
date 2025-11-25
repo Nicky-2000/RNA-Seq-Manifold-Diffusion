@@ -18,12 +18,7 @@ def main():
     spec = params["spec"]
     k = spec.get("ari_n_dims", spec.get("n_pcs", 10))
 
-    ad = sc.read_h5ad("./data/paul15/paul15.h5ad")
-    # your hvg+norm pipeline
-    from EGGFM.prep import prep_for_manifolds
-
-    # base = prep_for_manifolds(ad, hvg_n_top_genes=2000)
-    base = ad
+    base = sc.read_h5ad(spec.get("ad_file"))
     labels = base.obs[spec["ari_label_key"]].to_numpy()
 
     scores_eggfm = []

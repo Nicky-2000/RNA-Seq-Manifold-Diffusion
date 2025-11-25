@@ -13,8 +13,8 @@ class AnnDataExpressionDataset(Dataset):
     Uses HVG, log-normalized expression directly.
     """
 
-    def __init__(self, ad: "sc.AnnData", float_dtype: np.dtype = np.float32):
-        X = ad.X
+    def __init__(self, X: sc.AnnData.X, float_dtype: np.dtype = np.float32):
+        X = X
         if sparse.issparse(X):
             X = X.toarray()
         X = np.asarray(X, dtype=float_dtype)
