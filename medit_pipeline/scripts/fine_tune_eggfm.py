@@ -9,7 +9,6 @@ from EGGFM.eggfm import run_eggfm_dimred
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser()
     ap.add_argument("--params", required=True, help="configs/params.yml")
-    ap.add_argument("--out", required=True, help="out/interim")
     ap.add_argument("--ad", required=True, help="path to unperturbed .h5ad")
     return ap
 
@@ -20,8 +19,6 @@ def main() -> None:
     print("[main] parsed args", flush=True)
     params: Dict[str, Any] = yaml.safe_load(Path(args.params).read_text())
     print("[main] loaded params", flush=True)
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
     print("[main] reading AnnData...", flush=True)
     qc_ad = sc.read_h5ad(args.ad)
     print("[main] AnnData loaded, computing neighbor_overlap...", flush=True)
