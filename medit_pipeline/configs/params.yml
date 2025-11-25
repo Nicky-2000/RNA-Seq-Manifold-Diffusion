@@ -38,7 +38,7 @@ eggfm_diffmap:
 
   # NEW: energy-based conformal metric hyperparams
   metric_gamma: 0.2         # baseline metric weight
-  metric_lambda: 0.0        # how strongly energy rescales distances
+  metric_lambda: 4.0        # how strongly energy rescales distances
   energy_clip_low: 0.05     # quantile for lower energy clipping
   energy_clip_high: 0.95    # quantile for upper energy clipping
   energy_batch_size: 2048   # batch size for E(x) computation
