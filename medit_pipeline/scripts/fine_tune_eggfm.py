@@ -28,7 +28,8 @@ def main() -> None:
         qc_ad = prep_for_manifolds(ad)
     print("[main] AnnData loaded, computing neighbor_overlap...", flush=True)
     qc_ad, _ = run_eggfm_dimred(qc_ad, params)
-    qc_ad.write_h5ad(args.ad)
+    if not args.ad:
+        qc_ad.write_h5ad("data/paul15/paul15.h5ad")
 
 if __name__ == "__main__":
     main()

@@ -160,7 +160,7 @@ def build_argparser() -> argparse.ArgumentParser:
     ap.add_argument("--pca", default=None, help="path to unperturbed .h5ad")
     ap.add_argument("--ari", default=None, help="path to unperturbed .h5ad")
     ap.add_argument("--umap", default=None, help="path to unperturbed .h5ad")
-    ap.add_argument("--ad", default=None, help="path to unperturbed .h5ad")
+    ap.add_argument("--ad", required=True, help="path to unperturbed .h5ad")
     ap.add_argument("--ari-stab", default=None, help="emit qc_summary, plots, manifest")
     ap.add_argument(
         "--report-to-gcs",
@@ -362,11 +362,7 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     print("[main] reading AnnData...", flush=True)
-    if args.ad:
-        qc_ad = sc.read_h5ad(args.ad)
-    else:
-        ad = sc.datasets.paul15()
-        qc_ad = prep_for_manifolds(ad)
+    qc_ad = sc.read_h5ad(args.ad)
 
     print("[main] AnnData loaded, computing neighbor_overlap...", flush=True)
 
