@@ -53,7 +53,22 @@ class AlternatingDiffuser:
             )
 
         return X_last
-      
+
+def kmeans_ari(
+    X: np.ndarray,
+    labels: np.ndarray,
+    n_clusters: Optional[int] = None,
+    random_state: int = 0,
+) -> float:
+    """
+    Cluster X with k-means and compute ARI vs. labels.
+    """
+    if n_clusters is None:
+        n_clusters = len(np.unique(labels))
+    km = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
+    preds = km.fit_predict(X)
+    return adjusted_rand_score(labels, preds)
+
 def run_admr_layers(
     ad_prep: sc.AnnData,
     engine: EGGFMDiffusionEngine,
