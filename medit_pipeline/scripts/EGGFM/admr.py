@@ -58,57 +58,62 @@ def run_admr_layers(
     ad_prep: sc.AnnData,
     engine: EGGFMDiffusionEngine,
     n_layers: int = 3,
-    metric_sequence: List[str] | None = None,
-    t_sequence: List[float] | None = None,
-    base_geometry_source: str = "pca",
+    metric_sequence: Optional[List[str]] = None,
+    t_sequence: Optional[List[Optional[float]]] = None,
+    base_geometry_source: str = "pca",  # "pca" or "hvg"
     store_prefix: str = "X_admr_layer",
-) -> Tuple[sc.AnnData, Dict[int, np.ndarray]]:
+    # diagnostics:
+    labels: Optional[np.ndarray] = None,
+    label_key: Optional[str] = None,
+    n_clusters: Optional[int] = None,
+    k_overlap: Optional[int] = 30,
+    ari_random_state: int = 0,
+) -> Tuple[sc.AnnData, Dict[int, np.ndarray], List[Dict[str, Any]]]:
     """
-    Alternating Diffusion Metric Regularization (ADMR):
+    Alternating Diffusion Metric Regularization (ADMR) with diagnostics.
 
-    - Start from a base geometry (e.g., PCA).
+    - Start from a base geometry (PCA or HVG).
     - For each layer ℓ:
-        * run diffusion with given metric_mode & t,
-        * use that embedding as geometry for the next layer.
-
-    Parameters
-    ----------
-    ad_prep
-        Preprocessed AnnData (HVG/log1p/etc.).
-    engine
-        EGGFMDiffusionEngine built with your energy_model + diff_cfg.
-    n_layers
-        Number of diffusion layers to apply.
-    metric_sequence
-        List of metric_modes per layer, e.g. ["scm", "euclidean", "scm"].
-        If None, we use a default alternating pattern ["scm", "euclidean", ...].
-    t_sequence
-        Optional list of diffusion times per layer; if None, all use diff_cfg["t"].
-    base_geometry_source
-        "pca" or "hvg" – how to initialize geometry for the first layer.
-    store_prefix
-        Prefix for keys in ad_prep.obsm where we store each layer embedding.
+        * run diffusion with metric_sequence[ℓ] and t_sequence[ℓ],
+        * use that embedding as geometry for the next layer,
+        * optionally compute ARI vs labels,
+        * optionally compute mean kNN Jaccard overlap vs previous geometry.
 
     Returns
     -------
-    (ad_prep, layer_embeddings)
-        - ad_prep with new .obsm entries: f"{store_prefix}{ℓ}"
-        - dict mapping layer index -> embedding array.
+    ad_prep:
+        AnnData with .obsm[f"{store_prefix}{ℓ}"] for each layer.
+    layer_embeddings:
+        Dict[ℓ -> np.ndarray] of embeddings.
+    metrics_log:
+        List of per-layer metrics dicts, easy to turn into a DataFrame.
     """
-    # 1) base geometry for layer 0
+    # --- base geometry for layer 0 ---
     if base_geometry_source.lower() == "pca":
+        if "X_pca" not in ad_prep.obsm:
+            raise ValueError("[ADMR] base_geometry_source='pca' but 'X_pca' missing.")
         X_geom = np.asarray(ad_prep.obsm["X_pca"], dtype=np.float32)
+        base_geom_name = "pca"
         print("[ADMR] Using PCA as base geometry with shape", X_geom.shape, flush=True)
     elif base_geometry_source.lower() == "hvg":
-        X_geom = np.asarray(ad_prep.X.toarray() if hasattr(ad_prep.X, "toarray") else ad_prep.X,
-                            dtype=np.float32)
+        X_raw = ad_prep.X
+        if hasattr(X_raw, "toarray"):
+            X_raw = X_raw.toarray()
+        X_geom = np.asarray(X_raw, dtype=np.float32)
+        base_geom_name = "hvg"
         print("[ADMR] Using HVG (ad.X) as base geometry with shape", X_geom.shape, flush=True)
     else:
         raise ValueError(f"[ADMR] Unknown base_geometry_source: {base_geometry_source}")
 
-    # 2) default sequences if not provided
+    # --- labels, if provided ---
+    if labels is None and label_key is not None:
+        if label_key not in ad_prep.obs:
+            raise KeyError(f"[ADMR] label_key '{label_key}' not in ad_prep.obs")
+        labels = ad_prep.obs[label_key].to_numpy()
+
+    # --- default metric / t sequences ---
     if metric_sequence is None:
-        # alternate SCM and Euclidean, starting with SCM
+        # Alternate SCM, Euclidean, SCM, Euclidean, ...
         metric_sequence = ["scm" if (i % 2 == 0) else "euclidean" for i in range(n_layers)]
     if len(metric_sequence) != n_layers:
         raise ValueError("[ADMR] metric_sequence length must equal n_layers")
@@ -118,9 +123,11 @@ def run_admr_layers(
     if len(t_sequence) != n_layers:
         raise ValueError("[ADMR] t_sequence length must equal n_layers")
 
+    diff_cfg = engine.diff_cfg  # same for all layers
+    metrics_log: List[Dict[str, Any]] = []
     layer_embeddings: Dict[int, np.ndarray] = {}
 
-    # 3) iterate layers
+    # --- iterate layers ---
     for ell in range(n_layers):
         metric_mode = metric_sequence[ell]
         t_val = t_sequence[ell]
@@ -132,6 +139,7 @@ def run_admr_layers(
             flush=True,
         )
 
+        # Run diffusion with current geometry
         X_emb = engine.build_embedding(
             ad_prep,
             metric_mode=metric_mode,
@@ -143,59 +151,50 @@ def run_admr_layers(
         ad_prep.obsm[key] = X_emb
         layer_embeddings[ell] = X_emb
 
-        # Use this embedding as geometry for next layer
+        # --- diagnostics ---
+        # 1) ARI (if labels provided)
+        ari_val = None
+        if labels is not None:
+            ari_val = kmeans_ari(
+                X_emb,
+                labels,
+                n_clusters=n_clusters,
+                random_state=ari_random_state,
+            )
+
+        # 2) neighbor overlap vs previous geometry
+        overlap_val = None
+        if k_overlap is not None and k_overlap > 0:
+            overlap_val = mean_jaccard_knn(
+                X_ref=X_geom,
+                X_new=X_emb,
+                k=k_overlap,
+            )
+
+        # t effective (fall back to diff_cfg if None)
+        t_eff = t_val if t_val is not None else diff_cfg.get("t", 1.0)
+
+        metrics_log.append(
+            {
+                "layer": ell,
+                "metric_mode": metric_mode,
+                "t": float(t_eff),
+                "n_cells": int(X_emb.shape[0]),
+                "geometry_dim": int(X_geom.shape[1]),
+                "embedding_dim": int(X_emb.shape[1]),
+                "base_geometry_source": base_geom_name if ell == 0 else "admr_prev",
+                "n_neighbors": int(diff_cfg.get("n_neighbors", 30)),
+                "distance_power": float(diff_cfg.get("distance_power", 1.0)),
+                "norm_type": diff_cfg.get("norm_type", "l2"),
+                "ari": None if ari_val is None else float(ari_val),
+                "label_key": label_key,
+                "n_clusters": None if n_clusters is None else int(n_clusters),
+                "k_overlap": None if k_overlap is None else int(k_overlap),
+                "overlap_prev_mean": None if overlap_val is None else float(overlap_val),
+            }
+        )
+
+        # Use this embedding as geometry for the next layer
         X_geom = X_emb
 
-    return ad_prep, layer_embeddings
-  
-  
-def kmeans_ari(
-    X: np.ndarray,
-    labels: np.ndarray,
-    n_clusters: Optional[int] = None,
-    random_state: int = 0,
-) -> float:
-    """
-    Cluster X with k-means and compute ARI vs. labels.
-    """
-    if n_clusters is None:
-        n_clusters = len(np.unique(labels))
-    km = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
-    preds = km.fit_predict(X)
-    return adjusted_rand_score(labels, preds)
-
-
-def _knn_indices(X: np.ndarray, k: int) -> np.ndarray:
-    """
-    Return neighbor indices (excluding self) for each point.
-    Shape: (n_cells, k)
-    """
-    nn = NearestNeighbors(n_neighbors=k + 1, metric="euclidean")
-    nn.fit(X)
-    _, idx = nn.kneighbors(X)
-    return idx[:, 1:]  # drop self
-
-
-def mean_jaccard_knn(
-    X_ref: np.ndarray,
-    X_new: np.ndarray,
-    k: int = 30,
-) -> float:
-    """
-    Mean Jaccard similarity between k-NN sets in X_ref vs X_new,
-    computed per point and then averaged.
-    """
-    idx_ref = _knn_indices(X_ref, k=k)
-    idx_new = _knn_indices(X_new, k=k)
-
-    n = idx_ref.shape[0]
-    scores = np.empty(n, dtype=np.float32)
-
-    for i in range(n):
-        s1 = set(idx_ref[i])
-        s2 = set(idx_new[i])
-        inter = len(s1 & s2)
-        union = len(s1 | s2)
-        scores[i] = inter / union if union > 0 else 0.0
-
-    return float(scores.mean())
+    return ad_prep, layer_embeddings, metrics_log
