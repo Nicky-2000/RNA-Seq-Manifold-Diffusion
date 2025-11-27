@@ -100,6 +100,7 @@ class EGGFMDiffusionEngine:
         # metric strategy
         metric = self._get_metric(metric_mode)
         print("[EGGFMDiffusion Engine] metric", metric)
+        return
         state = metric.prepare(
             ad_prep=ad_prep,
             energy_model=self.energy_model,
