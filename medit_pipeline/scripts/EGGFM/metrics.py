@@ -19,6 +19,8 @@ def pairwise_norm(
         return np.linalg.norm(V, axis=1)
     elif norm == "l1":
         return np.sum(np.abs(V), axis=1)
+    elif norm == "l0":
+        return np.sum(V != 0, axis=1)
     elif norm == "linf":
         return np.max(np.abs(V), axis=1)
     else:

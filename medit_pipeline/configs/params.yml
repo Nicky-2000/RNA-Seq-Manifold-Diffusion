@@ -28,6 +28,7 @@ eggfm_train:
 eggfm_diffmap:
   geometry_source: "pca"    # "pca" or "hvg"
   energy_source: "hvg"      # where SCM/Hessian read energies
+  metric_mode: "hessian_mixed"   # "euclidean", "scm", or "hessian_mixed"
   n_neighbors: 30
   n_comps: 30
   device: "cuda"
@@ -38,7 +39,6 @@ eggfm_diffmap:
   distance_power: 1.0
   t: 2.0
   norm_type: "l2"
-  metric_mode: "hessian_mixed"   # "euclidean", "scm", or "hessian_mixed"
 
   # SCM hyperparams
   metric_gamma: 0.2
