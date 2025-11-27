@@ -153,7 +153,6 @@ class SCMMetric(BaseMetric):
         # Choose energy space to match how the model was trained.
         energy_source = self.diff_cfg.get("energy_source", "hvg").lower()        
         print("[EGGFM SCM] energy_source", energy_source, flush=True)
-        return
         if energy_source == "hvg":
             X_energy = ad_prep.X
         elif energy_source == "pca":
