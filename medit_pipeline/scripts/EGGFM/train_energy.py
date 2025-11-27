@@ -1,3 +1,4 @@
+# train_energy.py
 from typing import Dict, Any
 import torch
 from torch import optim
@@ -29,12 +30,11 @@ def train_energy_model(
         early_stop_patience: 0   # 0 => disable early stopping (default)
         early_stop_min_delta: 0.0
     """
-    # sc.pp.pca(ad_prep, n_comps=50)
-
     # Device
     device = train_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+
+    # Dataset
     if train_cfg.get("latent_space") == "HVG":
-        # Dataset
         dataset = AnnDataExpressionDataset(ad_prep.X)
     else:
         sc.pp.pca(ad_prep, n_comps=50)

@@ -1,4 +1,4 @@
-# dataset_energy.py
+# AnnDataPyTorch.py
 
 import numpy as np
 import torch

@@ -22,6 +22,7 @@ cell_barcodes = pd.read_csv(
     sep="\t"
 )[0].astype(str).values
 
+
 # 4) Metadata (one row per cell, same order as matrix rows)
 metadata = pd.read_csv(
     f"{DATA_DIR}/GSM4185642_stateFate_inVitro_metadata.txt.gz",

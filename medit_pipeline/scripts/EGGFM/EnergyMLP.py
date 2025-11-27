@@ -1,4 +1,4 @@
-# energy_model.py
+# EnergyMLP.py
 
 from typing import Sequence, Optional
 import torch
