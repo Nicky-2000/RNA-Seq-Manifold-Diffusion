@@ -24,9 +24,8 @@ def pairwise_norm(
     else:
         raise ValueError(f"Unknown norm: {norm}")
 
-
 def compute_scalar_conformal_field(
-    ad_prep: sc.AnnData,
+    X_energy: np.ndarray,
     energy_model,
     diff_cfg: Dict[str, Any],
     device: str,
@@ -34,8 +33,10 @@ def compute_scalar_conformal_field(
     """
     G(x) = gamma + lambda * exp(clip(E_norm(x))),
     with E_norm median-centered, MAD-scaled, and clipped to ±energy_clip_abs.
+
+    X_energy: dense (n_cells, D_energy) array in the SAME space the energy
+              model was trained on (HVG or PCA).
     """
-    X_energy = ad_prep.X
     if sp_sparse.issparse(X_energy):
         X_energy = X_energy.toarray()
     X_energy = np.asarray(X_energy, dtype=np.float32)
@@ -70,7 +71,9 @@ def compute_scalar_conformal_field(
 
     G = metric_gamma + metric_lambda * np.exp(E_clip)
     if not np.isfinite(G).all():
-        raise ValueError("[EGGFM SCM] non-finite values in G after exp; check E scaling.")
+        raise ValueError(
+            "[EGGFM SCM] non-finite values in G after exp; check energy scaling."
+        )
 
     print(
         "[EGGFM SCM] energy stats: "
@@ -85,8 +88,6 @@ def compute_scalar_conformal_field(
         flush=True,
     )
     return G
-
-
 # ---------- base class ----------
 
 class BaseMetric:
@@ -135,17 +136,37 @@ class EuclideanMetric(BaseMetric):
         return pairwise_norm(Xi, Xj, norm=norm_type)
 
 
-# ---------- SCM metric ----------
-
 class SCMMetric(BaseMetric):
+    """
+    Scalar conformal metric:
+
+      - prepare() computes G(x) from energies in energy space
+      - edge_distances() builds d_ij from G and chosen norm
+    """
+
     def prepare(
         self,
         ad_prep: sc.AnnData,
         energy_model,
         device: str,
     ) -> Dict[str, Any]:
+        # Choose energy space to match how the model was trained.
+        energy_source = self.diff_cfg.get("energy_source", "hvg").lower()
+
+        if energy_source == "hvg":
+            X_energy = ad_prep.X
+        elif energy_source == "pca":
+            if "X_pca" not in ad_prep.obsm:
+                raise ValueError(
+                    "[SCMMetric] energy_source='pca' but 'X_pca' not found in ad_prep.obsm. "
+                    "Run PCA / prep_for_manifolds before EGGFM."
+                )
+            X_energy = ad_prep.obsm["X_pca"]
+        else:
+            raise ValueError(f"[SCMMetric] Unknown energy_source: {energy_source}")
+
         G = compute_scalar_conformal_field(
-            ad_prep=ad_prep,
+            X_energy=X_energy,
             energy_model=energy_model,
             diff_cfg=self.diff_cfg,
             device=device,
@@ -172,7 +193,6 @@ class SCMMetric(BaseMetric):
         ell_sq = G_edge * (base_dist**2)
         ell_sq[ell_sq < 1e-12] = 1e-12
         return np.sqrt(ell_sq)
-
 
 # ---------- Hessian-mixed metric ----------
 

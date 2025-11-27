@@ -23,6 +23,7 @@ eggfm_train:
   lr: 1.0e-4
   sigma: 0.1
   device: "cuda"
+  latent_space: "hvg"
 
 eggfm_diffmap:
   geometry_source: "pca"    # "pca" or "hvg"
