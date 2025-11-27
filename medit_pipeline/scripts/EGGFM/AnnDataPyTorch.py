@@ -18,9 +18,11 @@ class AnnDataExpressionDataset(Dataset):
         if sparse.issparse(X):
             X = X.toarray()
         X = np.asarray(X, dtype=float_dtype)
-        # Optional: mean-center features for numerical stability
-        self.mean_ = X.mean(axis=0, keepdims=True)
-        self.X = X - self.mean_
+          # per-gene mean / std
+        mean = X.mean(axis=0, keepdims=True)
+        std = X.std(axis=0, keepdims=True) + 1e-6
+
+        self.X = (X - mean) / std    # standardized
 
     def __len__(self) -> int:
         return self.X.shape[0]

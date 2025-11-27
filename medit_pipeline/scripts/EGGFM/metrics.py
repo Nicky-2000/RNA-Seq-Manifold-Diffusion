@@ -52,9 +52,13 @@ def compute_scalar_conformal_field(
     energy_model = energy_model.to(device)
     energy_model.eval()
 
+    # per-gene mean / std (same as AnnDataExpressionDataset)
+    mean = X_energy.mean(axis=0, keepdims=True)
+    std = X_energy.std(axis=0, keepdims=True) + 1e-6
+    X_energy_std = (X_energy - mean) / std
     print("[EGGFM SCM] computing energies E(x) for all cells...", flush=True)
     with torch.no_grad():
-        X_energy_tensor = torch.from_numpy(X_energy).to(
+        X_energy_tensor = torch.from_numpy(X_energy_std).to(
             device=device, dtype=torch.float32
         )
         E_list = []
@@ -64,6 +68,9 @@ def compute_scalar_conformal_field(
             Eb = energy_model(xb)
             E_list.append(Eb.detach().cpu().numpy())
         E_vals = np.concatenate(E_list, axis=0).astype(np.float64)
+
+    
+    E_vals = np.concatenate(E_list, axis=0).astype(np.float64)  # (n_cells,)
 
     med = np.median(E_vals)
     mad = np.median(np.abs(E_vals - med)) + 1e-8
