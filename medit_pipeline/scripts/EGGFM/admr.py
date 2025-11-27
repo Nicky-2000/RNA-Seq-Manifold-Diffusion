@@ -53,7 +53,7 @@ class AlternatingDiffuser:
             )
 
         return X_last
-
+    
 def kmeans_ari(
     X: np.ndarray,
     labels: np.ndarray,
@@ -68,6 +68,42 @@ def kmeans_ari(
     km = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
     preds = km.fit_predict(X)
     return adjusted_rand_score(labels, preds)
+
+
+def _knn_indices(X: np.ndarray, k: int) -> np.ndarray:
+    """
+    Return neighbor indices (excluding self) for each point.
+    Shape: (n_cells, k)
+    """
+    nn = NearestNeighbors(n_neighbors=k + 1, metric="euclidean")
+    nn.fit(X)
+    _, idx = nn.kneighbors(X)
+    return idx[:, 1:]  # drop self
+
+
+def mean_jaccard_knn(
+    X_ref: np.ndarray,
+    X_new: np.ndarray,
+    k: int = 30,
+) -> float:
+    """
+    Mean Jaccard similarity between k-NN sets in X_ref vs X_new,
+    computed per point and then averaged.
+    """
+    idx_ref = _knn_indices(X_ref, k=k)
+    idx_new = _knn_indices(X_new, k=k)
+
+    n = idx_ref.shape[0]
+    scores = np.empty(n, dtype=np.float32)
+
+    for i in range(n):
+        s1 = set(idx_ref[i])
+        s2 = set(idx_new[i])
+        inter = len(s1 & s2)
+        union = len(s1 | s2)
+        scores[i] = inter / union if union > 0 else 0.0
+
+    return float(scores.mean())
 
 def run_admr_layers(
     ad_prep: sc.AnnData,
