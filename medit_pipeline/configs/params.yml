@@ -14,33 +14,40 @@ qc:
   min_genes: 200
   max_pct_mt: 15
 
-
 eggfm_model:
-  hidden_dims: [256, 256]   # smaller net for paul15
+  hidden_dims: [512, 512, 512, 512]
 
 eggfm_train:
-  batch_size: 1024
+  batch_size: 2048
   num_epochs: 50
-  lr: 3e-4
+  lr: 1.0e-4
   sigma: 0.1
-  early_stop_patience: 5
-  early_stop_min_delta: 1e-4
-  latent_space: PCA
-
+  device: "cuda"
 
 eggfm_diffmap:
+  geometry_source: "pca"    # "pca" or "hvg"
+  energy_source: "hvg"      # where SCM/Hessian read energies
   n_neighbors: 30
   n_comps: 30
-  device: cuda
+  device: "cuda"
   hvp_batch_size: 1024
-  eps_mode: median
-  eps_trunc: no
-  t: 2.0
-  latent_space: PCA
+  eps_mode: "median"
+  eps_value: 1.0
+  eps_trunc: "no"
+  distance_power: 1.0
+  t: 1.0
+  norm_type: "l2"
+  metric_mode: "hessian_mixed"   # "euclidean", "scm", or "hessian_mixed"
 
+  # SCM hyperparams
+  metric_gamma: 0.2
+  metric_lambda: 4.0
+  energy_clip_abs: 3.0
+  energy_batch_size: 2048
 
-  hessian_mix_mode: none
-  hessian_beta: 0.2
-  hessian_mix_alpha: 0.2
+  # Hessian mixing hyperparams
+  hessian_mix_mode: "additive"   # "additive" | "multiplicative" | "none"
+  hessian_mix_alpha: 0.3
+  hessian_beta: 0.3
   hessian_clip_std: 2.0
-  hessian_use_neg: yes
+  hessian_use_neg: true
