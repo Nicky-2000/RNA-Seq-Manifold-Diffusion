@@ -154,7 +154,6 @@ class SCMMetric(BaseMetric):
     ) -> Dict[str, Any]:
         # Choose energy space to match how the model was trained.
         energy_source = self.diff_cfg.get("energy_source", "hvg").lower()        
-        print("[EGGFM SCM] energy_source", energy_source, flush=True)
         if energy_source == "hvg":
             X_energy = ad_prep.X
         elif energy_source == "pca":
@@ -300,7 +299,8 @@ class HessianMixedMetric(BaseMetric):
             V_batch = Xj_batch - Xi_batch
 
             norms = np.linalg.norm(V_batch, axis=1, keepdims=True) + 1e-8
-            eucl2 = (norms.squeeze(-1)) ** 2
+            # eucl2 = (norms.squeeze(-1)) ** 2
+            eucl2 = pairwise_norm(Xi_batch, Xj_batch, norm=norm_type)
 
             if hessian_mix_mode == "none":
                 ell_sq[start:end] = eucl2

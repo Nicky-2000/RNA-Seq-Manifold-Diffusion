@@ -24,6 +24,8 @@ eggfm_train:
   sigma: 0.1
   device: "cuda"
   latent_space: "hvg"
+  early_stop_patience: 5
+  early_stop_min_delta: 0.0
 
 eggfm_diffmap:
   geometry_source: "pca"    # "pca" or "hvg"
