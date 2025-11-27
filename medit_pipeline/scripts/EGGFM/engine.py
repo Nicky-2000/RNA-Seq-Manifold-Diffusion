@@ -82,6 +82,7 @@ class EGGFMDiffusionEngine:
         ad_prep: sc.AnnData,
         metric_mode: str | None = None,
         t_override: float | None = None,
+        X_geom_override: np.ndarray | None = None, 
     ) -> np.ndarray:
         diff_cfg = dict(self.diff_cfg)
         if t_override is not None:
@@ -93,13 +94,21 @@ class EGGFMDiffusionEngine:
         device = device if torch.cuda.is_available() else "cpu"
 
         # geometry + graph
-        X_geom = self._get_geometry_matrix(ad_prep)
+        if X_geom_override is not None:
+            X_geom = np.asarray(X_geom_override, dtype=np.float32)
+            print(
+                "[EGGFM Engine] using override geometry with shape",
+                X_geom.shape,
+                flush=True,
+            )
+        else:
+            X_geom = self._get_geometry_matrix(ad_prep)
+
         n_cells = X_geom.shape[0]
         rows, cols = self._build_knn_graph(X_geom)
 
         # metric strategy
         metric = self._get_metric(metric_mode)
-        print("[EGGFMDiffusion Engine] metric", metric)
         state = metric.prepare(
             ad_prep=ad_prep,
             energy_model=self.energy_model,

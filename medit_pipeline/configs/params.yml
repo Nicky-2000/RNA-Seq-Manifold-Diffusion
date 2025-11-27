@@ -36,7 +36,7 @@ eggfm_diffmap:
   eps_value: 1.0
   eps_trunc: "no"
   distance_power: 1.0
-  t: 1.0
+  t: 2.0
   norm_type: "l2"
   metric_mode: "hessian_mixed"   # "euclidean", "scm", or "hessian_mixed"
 
@@ -47,8 +47,8 @@ eggfm_diffmap:
   energy_batch_size: 2048
 
   # Hessian mixing hyperparams
-  hessian_mix_mode: "additive"   # "additive" | "multiplicative" | "none"
+  hessian_mix_mode: "multiplicative"   # "additive" | "multiplicative" | "none"
   hessian_mix_alpha: 0.3
-  hessian_beta: 0.3
+  hessian_beta: 0.2
   hessian_clip_std: 2.0
   hessian_use_neg: true
