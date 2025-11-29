@@ -16,39 +16,21 @@ def train_energy_model(
 ) -> EnergyMLP:
     """
     Train an energy-based model on preprocessed AnnData using denoising score matching.
-
-    model_cfg (from params['eggfm_model']), e.g.:
-        hidden_dims: [512, 512, 512, 512]
-
-    train_cfg (from params['eggfm_train']), e.g.:
-        batch_size: 2048
-        num_epochs: 50
-        lr: 1e-4
-        sigma: 0.1
-        device: "cuda"
-
-        # optional:
-        early_stop_patience: 0       # 0 => disable early stopping (default)
-        early_stop_min_delta: 0.0
-        weight_decay: 0.0
-        grad_clip: 0.0               # 0.0 => no clipping
-        latent_space: "hvg" | "pca"
     """
+
     # -------- device --------
     device = train_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
 
-    # -------- dataset (HVG or PCA) --------
+    # -------- dataset: HVG or PCA --------
     latent_space = train_cfg.get("latent_space", "hvg")
     if latent_space == "hvg":
-        # Uses ad_prep.X (HVG log-normalized); AnnDataExpressionDataset
-        # will handle sparse → dense + per-gene standardization.
-        dataset = AnnDataExpressionDataset(ad_prep.X)
+        X = ad_prep.X
     else:
-        # Fall back to PCA space if requested
         if "X_pca" not in ad_prep.obsm:
             sc.pp.pca(ad_prep, n_comps=50)
-        dataset = AnnDataExpressionDataset(ad_prep.obsm["X_pca"])
+        X = ad_prep.obsm["X_pca"]
 
+    dataset = AnnDataExpressionDataset(X)
     n_genes = dataset.X.shape[1]
 
     # -------- model --------
@@ -63,12 +45,9 @@ def train_energy_model(
     num_epochs = int(train_cfg.get("num_epochs", 50))
     lr = float(train_cfg.get("lr", 1e-4))
     sigma = float(train_cfg.get("sigma", 0.1))
-
-    # Optional regularization / stability
     weight_decay = float(train_cfg.get("weight_decay", 0.0))
     grad_clip = float(train_cfg.get("grad_clip", 0.0))
 
-    # Early stopping hyperparams
     early_stop_patience = int(train_cfg.get("early_stop_patience", 0))  # 0 = off
     early_stop_min_delta = float(train_cfg.get("early_stop_min_delta", 0.0))
 
@@ -88,46 +67,46 @@ def train_energy_model(
     for epoch in range(num_epochs):
         running_loss = 0.0
 
-        for batch in loader:
-            x = batch.to(device)  # (B, D)
+        for xb in loader:
+            xb = xb.to(device)  # (B, D)
 
             # Sample Gaussian noise
-            eps = torch.randn_like(x)
-            y = x + sigma * eps
+            eps = torch.randn_like(xb)
+            y = xb + sigma * eps
             y.requires_grad_(True)
 
-            # Predicted score at y: s_theta(y) = -∇_y E(y)
-            energy = model(y)  # (B,)
-            energy_sum = energy.sum()
+            # Energy and score
+            energy = model(y)          # (B,)
+            energy_sum = energy.sum()  # scalar
+
+            # IMPORTANT: create_graph=True so grad flows back to model params
             (grad_y,) = torch.autograd.grad(
                 energy_sum,
                 y,
-                create_graph=False,
-                retain_graph=False,
+                create_graph=True,
+                retain_graph=True,
                 only_inputs=True,
             )
             s_theta = -grad_y  # (B, D)
 
             # DSM target: -(y - x) / sigma^2
-            target = -(y - x) / (sigma**2)
+            target = -(y - xb) / (sigma**2)
 
             # MSE over batch and dimensions
             loss = ((s_theta - target) ** 2).sum(dim=1).mean()
 
             optimizer.zero_grad()
             loss.backward()
-
-            # Optional gradient clipping
             if grad_clip > 0.0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-
             optimizer.step()
 
-            running_loss += loss.item() * x.size(0)
+            running_loss += loss.item() * xb.size(0)
 
         epoch_loss = running_loss / len(dataset)
+        # more precision so we can see if it's actually tiny, not exactly zero
         print(
-            f"[Energy DSM] Epoch {epoch+1}/{num_epochs}  loss={epoch_loss:.4f}",
+            f"[Energy DSM] Epoch {epoch+1}/{num_epochs}  loss={epoch_loss:.6e}",
             flush=True,
         )
 
@@ -142,7 +121,7 @@ def train_energy_model(
         if early_stop_patience > 0 and epochs_without_improve >= early_stop_patience:
             print(
                 f"[Energy DSM] Early stopping at epoch {epoch+1} "
-                f"(best_loss={best_loss:.4f})",
+                f"(best_loss={best_loss:.6e})",
                 flush=True,
             )
             break
