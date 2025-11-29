@@ -53,9 +53,9 @@ def compute_scalar_conformal_field(
     energy_model.eval()
 
     # per-gene mean / std (same as AnnDataExpressionDataset)
-    mean = X_energy.mean(axis=0, keepdims=True)
-    std = X_energy.std(axis=0, keepdims=True) + 1e-6
-    X_energy_std = (X_energy - mean) / std
+    med = np.median(X_energy, axis=0, keepdims=True)
+    mad = np.median(np.abs(X_energy - med), axis=0, keepdims=True) + 1e-8
+    X_energy_std = (X_energy - med) / mad
     print("[EGGFM SCM] computing energies E(x) for all cells...", flush=True)
     with torch.no_grad():
         X_energy_tensor = torch.from_numpy(X_energy_std).to(
@@ -67,10 +67,11 @@ def compute_scalar_conformal_field(
             xb = X_energy_tensor[start:end]
             Eb = energy_model(xb)
             E_list.append(Eb.detach().cpu().numpy())
-        E_vals = np.concatenate(E_list, axis=0).astype(np.float64)
 
     
     E_vals = np.concatenate(E_list, axis=0).astype(np.float64)  # (n_cells,)
+
+    
 
     med = np.median(E_vals)
     mad = np.median(np.abs(E_vals - med)) + 1e-8
@@ -78,7 +79,9 @@ def compute_scalar_conformal_field(
 
     E_clip = np.clip(E_norm, -max_abs, max_abs)
 
-    G = metric_gamma + metric_lambda * np.exp(E_clip)
+    G = metric_gamma + metric_lambda * np.exp(0.5 * E_clip)
+
+
     if not np.isfinite(G).all():
         raise ValueError(
             "[EGGFM SCM] non-finite values in G after exp; check energy scaling."
@@ -306,7 +309,6 @@ class HessianMixedMetric(BaseMetric):
             V_batch = Xj_batch - Xi_batch
 
             norms = np.linalg.norm(V_batch, axis=1, keepdims=True) + 1e-8
-            # eucl2 = (norms.squeeze(-1)) ** 2
             eucl2 = pairwise_norm(Xi_batch, Xj_batch, norm=norm_type)
 
             if hessian_mix_mode == "none":

@@ -19,10 +19,10 @@ class AnnDataExpressionDataset(Dataset):
             X = X.toarray()
         X = np.asarray(X, dtype=float_dtype)
           # per-gene mean / std
-        mean = X.mean(axis=0, keepdims=True)
-        std = X.std(axis=0, keepdims=True) + 1e-6
+        med = np.median(X, axis=0, keepdims=True)
+        mad = np.median(np.abs(X - med), axis=0, keepdims=True) + 1e-8
+        self.X = (X - med) / mad
 
-        self.X = (X - mean) / std    # standardized
 
     def __len__(self) -> int:
         return self.X.shape[0]
