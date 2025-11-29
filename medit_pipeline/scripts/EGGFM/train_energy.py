@@ -2,7 +2,7 @@
 from typing import Dict, Any
 import torch
 from torch import optim
-from torch.optim.lr_scheduler import CosineAnnealingLR
+
 from torch.utils.data import DataLoader
 
 from .EnergyMLP import EnergyMLP
@@ -59,7 +59,7 @@ def train_energy_model(
         drop_last=True,
     )
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = CosineAnnealingLR(optimizer,T_max = num_epochs,eta_min=lr/10.0)
+
     best_loss = float("inf")
     best_state_dict = None
     epochs_without_improve = 0
@@ -105,15 +105,12 @@ def train_energy_model(
             running_loss += loss.item() * xb.size(0)
 
         epoch_loss = running_loss / len(dataset)
-        curr_lr = scheduler.get_last_lr()[0]
         # more precision so we can see if it's actually tiny, not exactly zero
         print(
-            f"[Energy DSM] Epoch {epoch+1}/{num_epochs}  "
-            f"loss={epoch_loss:.6e}  lr={curr_lr:.2e}",
+            f"[Energy DSM] Epoch {epoch+1}/{num_epochs}  loss={epoch_loss:.6e}",
             flush=True,
         )
-        
-        scheduler.step()
+
         # ---- early stopping bookkeeping ----
         if epoch_loss + early_stop_min_delta < best_loss:
             best_loss = epoch_loss
