@@ -33,8 +33,8 @@ def compute_scalar_conformal_field(
     device: str,
 ) -> np.ndarray:
     """
-    G(x) = gamma + lambda * exp(clip(E_norm(x))),
-    with E_norm median-centered, MAD-scaled, and clipped to ±energy_clip_abs.
+    G(x) = gamma + lambda * exp(0.5 * clip(E_norm(x))),
+    where E_norm is median-centered, MAD-scaled, and clipped to ±energy_clip_abs.
 
     X_energy: dense (n_cells, D_energy) array in the SAME space the energy
               model was trained on (HVG or PCA).
@@ -49,13 +49,14 @@ def compute_scalar_conformal_field(
     energy_batch_size = int(diff_cfg.get("energy_batch_size", 2048))
     max_abs = float(diff_cfg.get("energy_clip_abs", 3.0))
 
+    mean = X_energy.mean(axis=0, keepdims=True)
+    std  = X_energy.std(axis=0, keepdims=True)
+    std  = np.clip(std, 1e-2, None)   # avoid tiny std → explosions
+    X_energy_std = (X_energy - mean) / std
+
     energy_model = energy_model.to(device)
     energy_model.eval()
 
-    # per-gene mean / std (same as AnnDataExpressionDataset)
-    med = np.median(X_energy, axis=0, keepdims=True)
-    mad = np.median(np.abs(X_energy - med), axis=0, keepdims=True) + 1e-8
-    X_energy_std = (X_energy - med) / mad
     print("[EGGFM SCM] computing energies E(x) for all cells...", flush=True)
     with torch.no_grad():
         X_energy_tensor = torch.from_numpy(X_energy_std).to(
@@ -65,22 +66,20 @@ def compute_scalar_conformal_field(
         for start in range(0, n_cells, energy_batch_size):
             end = min(start + energy_batch_size, n_cells)
             xb = X_energy_tensor[start:end]
-            Eb = energy_model(xb)
+            Eb = energy_model(xb)          # (B,)
             E_list.append(Eb.detach().cpu().numpy())
 
-    
     E_vals = np.concatenate(E_list, axis=0).astype(np.float64)  # (n_cells,)
 
-    
-
+    # ---- scalar energy normalization: median + MAD (robust in 1D) ----
     med = np.median(E_vals)
     mad = np.median(np.abs(E_vals - med)) + 1e-8
     E_norm = (E_vals - med) / mad
 
     E_clip = np.clip(E_norm, -max_abs, max_abs)
 
+    # softer exponential to avoid insane G ranges
     G = metric_gamma + metric_lambda * np.exp(0.5 * E_clip)
-
 
     if not np.isfinite(G).all():
         raise ValueError(
@@ -100,6 +99,7 @@ def compute_scalar_conformal_field(
         flush=True,
     )
     return G
+
 # ---------- base class ----------
 
 class BaseMetric:

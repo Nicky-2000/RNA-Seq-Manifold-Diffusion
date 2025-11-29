@@ -13,15 +13,19 @@ class AnnDataExpressionDataset(Dataset):
     Uses HVG, log-normalized expression directly.
     """
 
-    def __init__(self, X: sc.AnnData.X, float_dtype: np.dtype = np.float32):
-        X = X
+    def __init__(self, X, float_dtype=np.float32):
         if sparse.issparse(X):
             X = X.toarray()
         X = np.asarray(X, dtype=float_dtype)
-          # per-gene mean / std
-        med = np.median(X, axis=0, keepdims=True)
-        mad = np.median(np.abs(X - med), axis=0, keepdims=True) + 1e-8
-        self.X = (X - med) / mad
+
+        mean = X.mean(axis=0, keepdims=True)
+        std  = X.std(axis=0, keepdims=True)
+
+        # prevent divide-by-zero or tiny variance explosions
+        std = np.clip(std, 1e-2, None)
+
+        self.X = (X - mean) / std
+
 
 
     def __len__(self) -> int:
