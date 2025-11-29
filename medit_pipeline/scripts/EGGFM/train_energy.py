@@ -15,7 +15,7 @@ def train_energy_model(
     train_cfg: Dict[str, Any],
 ) -> EnergyMLP:
     """
-    Train an energy-based model on preprocessed AnnData using denoising score matching.
+    Train an energy-based model on preprocessed AnnData usjing denoising score matching.
     """
 
     # -------- device --------
