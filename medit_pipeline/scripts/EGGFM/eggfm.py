@@ -79,11 +79,9 @@ def run_eggfm_dimred(
         energy_source=diff_cfg.get("energy_source", "hvg"),
     )
     
-    # 3) compute latent
-    Z_latent = compute_eggfm_latent(qc_ad, energy_model, train_cfg)
-    qc_ad.obsm["X_eggfm_latent"] = Z_latent
-
-    # 4) Engine
+    
+    
+    # 3) Engine
     engine = EGGFMDiffusionEngine(
         energy_model=energy_model,
         diff_cfg=diff_cfg,
@@ -93,17 +91,23 @@ def run_eggfm_dimred(
     # 4) Single-pass embedding for now
     metric_mode = diff_cfg.get("metric_mode", "hessian_mixed")
     
-    # compress latent → 20D before giving to engine
-    from sklearn.decomposition import PCA
-    pca_latent = PCA(n_components=20)
-    Z_latent_20 = pca_latent.fit_transform(Z_latent)
-    qc_ad.obsm["X_eggfm_latent_pca20"] = Z_latent_20    
+    Z_latent_20 = None
+    if train_cfg.get("latent_dim"):
+            # 3) compute latent
+        Z_latent = compute_eggfm_latent(qc_ad, energy_model, train_cfg)
+        qc_ad.obsm["X_eggfm_latent"] = Z_latent
+        
+        # compress latent → 20D before giving to engine
+        from sklearn.decomposition import PCA
+        pca_latent = PCA(n_components=20)
+        Z_latent_20 = pca_latent.fit_transform(Z_latent)
+        qc_ad.obsm["X_eggfm_latent_pca20"] = Z_latent_20    
     
     # If X_geo_override is none, recovers PCA geo
     X_eggfm = engine.build_embedding(
             qc_ad,
             metric_mode=metric_mode,
-            X_geom_override=Z_latent
+            X_geom_override=Z_latent_20
         )
     
 
