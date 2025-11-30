@@ -93,12 +93,20 @@ def run_eggfm_dimred(
     # 4) Single-pass embedding for now
     metric_mode = diff_cfg.get("metric_mode", "hessian_mixed")
     
+    # compress latent → 20D before giving to engine
+    from sklearn.decomposition import PCA
+    pca_latent = PCA(n_components=20)
+    Z_latent_20 = pca_latent.fit_transform(Z_latent)
+    qc_ad.obsm["X_eggfm_latent_pca20"] = Z_latent_20    
+    
     # If X_geo_override is none, recovers PCA geo
     X_eggfm = engine.build_embedding(
             qc_ad,
             metric_mode=metric_mode,
             X_geom_override=Z_latent
         )
+    
+
         
     qc_ad.obsm["X_eggfm"] = X_eggfm
 
