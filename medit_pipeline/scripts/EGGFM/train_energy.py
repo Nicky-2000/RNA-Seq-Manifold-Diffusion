@@ -59,7 +59,6 @@ def train_energy_model(
         drop_last=True,
     )
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-
     best_loss = float("inf")
     best_state_dict = None
     epochs_without_improve = 0
@@ -101,7 +100,6 @@ def train_energy_model(
             if grad_clip > 0.0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
-
             running_loss += loss.item() * xb.size(0)
 
         epoch_loss = running_loss / len(dataset)
